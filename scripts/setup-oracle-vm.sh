@@ -79,6 +79,17 @@ if ! command -v mongodump &> /dev/null; then
 fi
 echo "MongoDB Tools version: $(mongodump --version | head -n1)"
 
+echo "===> 4.5 Installing & Starting MongoDB Community Server (Catalog Database)..."
+if ! command -v mongod &> /dev/null; then
+  curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+  echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+  sudo apt-get update
+  sudo apt-get install -y mongodb-org
+fi
+
+sudo systemctl enable --now mongod
+echo "MongoDB Server status: $(sudo systemctl is-active mongod)"
+
 echo "===> 5. Preparing Application Directory..."
 sudo mkdir -p "$APP_DIR"
 sudo chown -R $USER:$USER "$APP_DIR"
