@@ -1,0 +1,32 @@
+<%- include('partials/head', { title: 'Restore status', username, publicIp, csrfToken, flash }) %>
+<a class="back-link" href="/databases/<%= job.dbId %>">&larr; Back to database</a>
+<div class="page-header"><h1>Restore</h1></div>
+
+<div class="card">
+  <div class="stat-row">
+    <div class="stat"><div class="label">Status</div><div class="value" id="restore-status"><span class="badge <%= job.status %>"><%= job.status %></span></div></div>
+    <div class="stat"><div class="label">Target time</div><div class="value" style="font-size:13px"><%= job.targetTimestamp ? new Date(job.targetTimestamp).toLocaleString() : '—' %></div></div>
+    <div class="stat"><div class="label">Mode</div><div class="value" style="font-size:13px"><%= job.mode %></div></div>
+  </div>
+</div>
+
+<div class="card" id="restore-result">
+  <% if (job.verification) { %>
+    <h3>Verification</h3>
+    <p><%= job.verification.ok ? 'Counts match expected.' : 'Counts diverged from expected — inspect before trusting this restore.' %></p>
+    <pre class="mono"><%= JSON.stringify(job.verification, null, 2) %></pre>
+    <% if (job.replayStats) { %>
+      <h3>Replay</h3>
+      <pre class="mono"><%= JSON.stringify(job.replayStats, null, 2) %></pre>
+    <% } %>
+    <% if (job.error) { %><p class="badge failed"><%= job.error %></p><% } %>
+  <% } else { %>
+    <div class="empty-state">Waiting for the restore to finish&hellip;</div>
+  <% } %>
+</div>
+
+<script>
+  window.__restoreId = "<%= job._id %>";
+  window.__restoreDone = <%- (job.status === 'completed' || job.status === 'failed') ? 'true' : 'false' %>;
+</script>
+<%- include('partials/foot') %>

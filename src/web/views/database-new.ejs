@@ -1,0 +1,52 @@
+<%- include('partials/head', { title: 'Add database', username, publicIp, csrfToken, flash }) %>
+<a class="back-link" href="/">&larr; Back to dashboard</a>
+<div class="page-header"><h1>Add database</h1></div>
+
+<div class="card" style="max-width:640px">
+  <form method="post" action="/databases">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+    <div class="form-row">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" required placeholder="e.g. shop-prod" />
+    </div>
+
+    <div class="form-row">
+      <label for="connectionUri">MongoDB connection URL</label>
+      <input type="text" id="connectionUri" name="connectionUri" required
+        placeholder="mongodb+srv://user:pass@cluster0.xxxxx.mongodb.net/mydb" />
+      <div class="hint">Must include the database name in the path. We'll test-connect before saving, and the URL is encrypted at rest.</div>
+    </div>
+
+    <div class="form-row">
+      <label for="tags">Tags</label>
+      <input type="text" id="tags" name="tags" placeholder="prod, orders, us-east" />
+      <div class="hint">Comma-separated, optional — for your own organization.</div>
+    </div>
+
+    <div class="form-row">
+      <label for="tier">Atlas tier</label>
+      <select id="tier" name="tier">
+        <option value="unknown" selected>Unknown / not sure</option>
+        <option value="M0">M0 (free)</option>
+        <option value="M2">M2</option>
+        <option value="M5">M5</option>
+        <option value="M10">M10+ (dedicated)</option>
+      </select>
+    </div>
+
+    <div class="form-row">
+      <label style="font-weight:normal"><input type="checkbox" name="pitrEnabled" value="true" checked style="width:auto" /> Enable continuous capture (near-zero RPO)</label>
+      <div class="hint">Starts a change-stream worker immediately after saving. Required for point-in-time restore.</div>
+    </div>
+
+    <div class="form-row">
+      <label for="scheduleCron">Base backup schedule (cron, optional)</label>
+      <input type="text" id="scheduleCron" name="scheduleCron" placeholder="0 * * * *  (hourly)" />
+      <div class="hint">Leave blank to only take backups manually from the database page.</div>
+    </div>
+
+    <button class="btn" type="submit">Add database</button>
+  </form>
+</div>
+<%- include('partials/foot') %>

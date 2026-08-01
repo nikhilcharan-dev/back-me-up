@@ -1,0 +1,28 @@
+services:
+  catalog-mongo:
+    image: mongo:7
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - catalog-data:/data/db
+
+  api:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - catalog-mongo
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      CATALOG_MONGODB_URI: mongodb://catalog-mongo:27017/backmeup_catalog
+      MASTER_KEY: ${MASTER_KEY}
+      SESSION_KEY: ${SESSION_KEY}
+      STORAGE_ROOT: /data/storage
+    volumes:
+      - storage-data:/data/storage
+
+volumes:
+  catalog-data:
+  storage-data:

@@ -1,0 +1,33 @@
+<%- include('partials/head', { title: 'Dashboard', username, publicIp, csrfToken, flash }) %>
+<div class="page-header">
+  <div>
+    <h1>Registered databases</h1>
+    <div class="subtitle"><%= databases.length %> database<%= databases.length === 1 ? '' : 's' %></div>
+  </div>
+  <a class="btn" href="/databases/new">+ Add database</a>
+</div>
+
+<div class="card">
+  <% if (databases.length === 0) { %>
+    <div class="empty-state">No databases registered yet. <a href="/databases/new">Add your first one</a>.</div>
+  <% } else { %>
+    <% databases.forEach(function(db) { %>
+      <div class="db-list-row">
+        <div>
+          <div class="name"><a href="/databases/<%= db._id %>"><%= db.name %></a></div>
+          <div class="meta">
+            <%= db.dbName %> &middot; <%= db.tier %>
+            <% if (db.tags && db.tags.length) { %>
+              &middot; <% db.tags.forEach(function(t) { %><span class="tag"><%= t %></span><% }) %>
+            <% } %>
+          </div>
+        </div>
+        <div class="actions">
+          <% if (db.pitrEnabled) { %><span class="badge neutral">PITR</span><% } %>
+          <span class="badge <%= db.captureStatus %>"><%= db.captureStatus %></span>
+        </div>
+      </div>
+    <% }) %>
+  <% } %>
+</div>
+<%- include('partials/foot') %>

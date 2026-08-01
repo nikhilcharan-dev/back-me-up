@@ -1,0 +1,19 @@
+<div class="navbar">
+  <a class="brand" href="/">back-me-up</a>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="/metrics">Metrics</a>
+  </nav>
+  <div class="spacer"></div>
+  <div class="ip-badge" title="Whitelist this IP in your Atlas cluster's Network Access settings">
+    <span>Server IP:</span>
+    <span class="ip-value"><%= publicIp.ip || (publicIp.error ? 'unavailable' : 'detecting…') %></span>
+  </div>
+  <div class="user-menu">
+    <span><%= username %></span>
+    <form method="post" action="/logout">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <button class="logout-btn" type="submit">Log out</button>
+    </form>
+  </div>
+</div>

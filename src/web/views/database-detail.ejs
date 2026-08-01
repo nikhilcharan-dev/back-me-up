@@ -1,0 +1,218 @@
+<%- include('partials/head', { title: db.name, username, publicIp, csrfToken, flash }) %>
+<a class="back-link" href="/">&larr; Back to dashboard</a>
+<div class="page-header">
+  <div>
+    <h1><%= db.name %></h1>
+    <div class="subtitle">
+      <%= db.dbName %> &middot; tier <%= db.tier %>
+      <% if (db.tags && db.tags.length) { %>
+        &middot; <% db.tags.forEach(function(t) { %><span class="tag"><%= t %></span><% }) %>
+      <% } %>
+    </div>
+  </div>
+  <div class="actions">
+    <% if (db.pitrEnabled) { %><span class="badge neutral">PITR enabled</span><% } %>
+    <span class="badge <%= db.captureStatus %>">capture: <%= db.captureStatus %></span>
+  </div>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>Capture</h2>
+    <div class="stat-row">
+      <div class="stat"><div class="label">Status</div><div class="value"><span class="badge <%= db.captureStatus %>"><%= db.captureStatus %></span></div></div>
+      <div class="stat"><div class="label">Last captured</div><div class="value" style="font-size:13px"><%= db.lastCaptureTs ? new Date(db.lastCaptureTs.t * 1000).toLocaleString() : '—' %></div></div>
+      <div class="stat"><div class="label">Last base backup</div><div class="value" style="font-size:13px"><%= db.lastBaseAt ? new Date(db.lastBaseAt).toLocaleString() : 'never' %></div></div>
+    </div>
+    <div class="actions" style="margin-top:10px">
+      <% if (captureRunning) { %>
+        <form method="post" action="/databases/<%= db._id %>/capture/stop">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button class="btn secondary small" type="submit">Stop capture</button>
+        </form>
+      <% } else { %>
+        <form method="post" action="/databases/<%= db._id %>/capture/start">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+          <button class="btn small" type="submit">Start capture</button>
+        </form>
+      <% } %>
+      <form method="post" action="/databases/<%= db._id %>/backups">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="btn small" type="submit">Run backup now</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Restore</h2>
+    <form method="post" action="/databases/<%= db._id %>/restore" id="restore-form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <input type="hidden" id="targetTimestampIso" name="targetTimestamp" />
+
+      <div class="form-row">
+        <label>Restore mode</label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-weight:normal;margin-right:16px">
+          <input type="radio" name="mode" value="pitr" checked onchange="toggleRestoreMode()" style="width:auto" /> Point-in-time
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-weight:normal">
+          <input type="radio" name="mode" value="base" onchange="toggleRestoreMode()" style="width:auto" /> Specific snapshot
+        </label>
+      </div>
+
+      <div class="form-row" id="pitr-fields">
+        <label for="targetTimestampLocal">Restore to</label>
+        <input type="datetime-local" id="targetTimestampLocal" step="1" />
+        <div class="hint">
+          <% var completedBackups = backups.filter(function(b){ return b.status === 'completed'; }); %>
+          <% if (completedBackups.length) { %>
+            Earliest available: <%= new Date(completedBackups[completedBackups.length-1].startedAt).toLocaleString() %>
+          <% } else { %>
+            No completed backups yet — run one first.
+          <% } %>
+        </div>
+      </div>
+
+      <div class="form-row" id="base-fields" style="display:none">
+        <label for="baseBackupId">Backup snapshot</label>
+        <select id="baseBackupId" name="baseBackupId">
+          <% completedBackups.forEach(function(b) { %>
+            <option value="<%= b._id %>"><%= new Date(b.finishedAt).toLocaleString() %> (<%= b.collections.length %> collections)</option>
+          <% }) %>
+        </select>
+      </div>
+
+      <div class="form-row">
+        <label for="targetUri">Target MongoDB URL</label>
+        <input type="text" id="targetUri" name="targetUri" required placeholder="mongodb+srv://user:pass@cluster/newdb" />
+        <div class="hint">Restores always go into a fresh database — never over a live one.</div>
+      </div>
+
+      <button class="btn" type="submit" <%= completedBackups.length ? '' : 'disabled' %>>Start restore</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-toolbar">
+    <h2 style="margin:0">Backups</h2>
+  </div>
+  <% if (backups.length === 0) { %>
+    <div class="empty-state">No backups yet.</div>
+  <% } else { %>
+    <table>
+      <thead><tr><th>Started</th><th>Status</th><th>Size</th><th>Collections</th><th></th></tr></thead>
+      <tbody>
+        <% backups.forEach(function(b) { %>
+          <tr>
+            <td><%= new Date(b.startedAt).toLocaleString() %></td>
+            <td><span class="badge <%= b.status %>"><%= b.status %></span></td>
+            <td><%= b.sizeBytes ? (b.sizeBytes / 1024).toFixed(1) + ' KB' : '—' %></td>
+            <td><%= b.collections ? b.collections.length : 0 %></td>
+            <td><% if (b.status === 'completed') { %><a href="/backups/<%= b._id %>/download">Download</a><% } %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Recent restores</h2>
+  <% if (restoreJobs.length === 0) { %>
+    <div class="empty-state">No restores yet.</div>
+  <% } else { %>
+    <table>
+      <thead><tr><th>Started</th><th>Target time</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        <% restoreJobs.forEach(function(r) { %>
+          <tr>
+            <td><%= new Date(r.createdAt).toLocaleString() %></td>
+            <td><%= r.targetTimestamp ? new Date(r.targetTimestamp).toLocaleString() : '—' %></td>
+            <td><span class="badge <%= r.status %>"><%= r.status %></span></td>
+            <td><a href="/restores/<%= r._id %>">View</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+
+<div class="grid cols-2">
+  <div class="card">
+    <h2>Retention</h2>
+    <p class="help-text">
+      <% if (db.retention) { %>
+        Hourly: <%= db.retention.hourly || 0 %> &middot; Daily: <%= db.retention.daily || 0 %> &middot; Weekly: <%= db.retention.weekly || 0 %>
+      <% } else { %>
+        No policy set — backups are kept until manually deleted.
+      <% } %>
+    </p>
+    <form method="post" action="/databases/<%= db._id %>/retention" class="grid cols-2" style="margin-bottom:10px">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <div class="form-row"><label>Hourly</label><input type="text" name="hourly" value="<%= (db.retention && db.retention.hourly) || '' %>" placeholder="24" /></div>
+      <div class="form-row"><label>Daily</label><input type="text" name="daily" value="<%= (db.retention && db.retention.daily) || '' %>" placeholder="30" /></div>
+      <div class="form-row" style="grid-column:1/-1"><label>Weekly</label><input type="text" name="weekly" value="<%= (db.retention && db.retention.weekly) || '' %>" placeholder="12" /></div>
+      <div style="grid-column:1/-1"><button class="btn secondary small" type="submit">Save policy</button></div>
+    </form>
+    <form method="post" action="/databases/<%= db._id %>/retention/run">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <button class="btn secondary small" type="submit">Run retention now</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Test restores</h2>
+    <p class="help-text">Scheduled restores to a scratch target validate that backups actually work.</p>
+    <form method="post" action="/databases/<%= db._id %>/test-restore-target" style="margin-bottom:12px">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+      <div class="form-row"><label>Scratch target URL</label><input type="text" name="targetUri" placeholder="mongodb+srv://.../scratch_db" /></div>
+      <div class="form-row"><label>Cron (optional, default weekly)</label><input type="text" name="cron" placeholder="0 4 * * 0" /></div>
+      <button class="btn secondary small" type="submit">Save target</button>
+    </form>
+    <% if (db.testRestoreTargetConfigured) { %>
+      <form method="post" action="/databases/<%= db._id %>/test-restores/run" style="margin-bottom:12px">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="btn secondary small" type="submit">Run test-restore now</button>
+      </form>
+    <% } %>
+    <% if (testRestoreRuns.length === 0) { %>
+      <div class="empty-state">No test-restores have run yet.</div>
+    <% } else { %>
+      <table>
+        <thead><tr><th>Ran at</th><th>Result</th></tr></thead>
+        <tbody>
+          <% testRestoreRuns.forEach(function(r) { %>
+            <tr>
+              <td><%= new Date(r.ranAt).toLocaleString() %></td>
+              <td><span class="badge <%= r.ok ? 'ok' : 'failed' %>"><%= r.ok ? 'OK' : (r.error || 'FAILED') %></span></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Danger zone</h2>
+  <div class="grid cols-2">
+    <div>
+      <h3>Rotate credentials</h3>
+      <form method="post" action="/databases/<%= db._id %>/rotate-uri">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <div class="form-row"><input type="text" name="connectionUri" required placeholder="New mongodb+srv:// URL, same database" /></div>
+        <button class="btn secondary small" type="submit">Rotate URL</button>
+      </form>
+    </div>
+    <div>
+      <h3>Unregister</h3>
+      <p class="help-text">Stops capture and schedules. Existing backups are kept and stay restorable.</p>
+      <form method="post" action="/databases/<%= db._id %>/delete" data-confirm="Unregister <%= db.name %>? Capture and schedules will stop.">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="btn danger small" type="submit">Unregister database</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('partials/foot') %>

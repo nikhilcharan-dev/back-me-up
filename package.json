@@ -1,0 +1,33 @@
+{
+  "name": "back-me-up",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MongoDB Atlas backup & point-in-time recovery service",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "generate-key": "node scripts/generate-master-key.js",
+    "generate-session-key": "node scripts/generate-session-key.js",
+    "create-admin": "node scripts/create-admin.js"
+  },
+  "dependencies": {
+    "@fastify/csrf-protection": "^8.0.0",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/secure-session": "^8.3.0",
+    "@fastify/static": "^10.1.0",
+    "@fastify/view": "^12.0.0",
+    "bcryptjs": "^3.0.3",
+    "bson": "^6.9.0",
+    "dotenv": "^16.4.5",
+    "ejs": "^6.0.1",
+    "fastify": "^5.0.0",
+    "mongodb": "^6.9.0",
+    "node-cron": "^4.6.0",
+    "prom-client": "^15.1.3",
+    "tar": "^7.5.20"
+  }
+}

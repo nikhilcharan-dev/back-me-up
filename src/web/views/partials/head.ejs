@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title><%= typeof title !== 'undefined' && title ? title + ' · back-me-up' : 'back-me-up' %></title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<%- include('navbar', { username, publicIp, csrfToken }) %>
+<div class="page">
+<% if (flash) { %>
+  <div class="flash <%= flash.type %>"><%= flash.message %></div>
+<% } %>
