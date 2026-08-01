@@ -14,7 +14,7 @@ APP_DIR="/var/www/back-me-up"
 
 echo "===> 1. Updating System Packages..."
 sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y curl ca-certificates git build-essential xfs-progs e2fsprogs
+sudo apt-get install -y curl ca-certificates git build-essential xfsprogs e2fsprogs
 
 echo "===> 2. Formatting & Mounting OCI Block Volume..."
 # Check if block device exists
@@ -61,6 +61,7 @@ sudo npm install -g pm2
 
 echo "===> 4. Installing MongoDB Database Tools (mongodump / mongorestore)..."
 if ! command -v mongodump &> /dev/null; then
+  curl -fsSL https://fastdl.mongodb.org/tools/db/mongodb-database-tools-ubuntu2204-x86_64-100.10.0.deb -o /tmp/db-tools.deb || \
   curl -fsSL https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian12-x86_64-100.10.0.deb -o /tmp/db-tools.deb
   sudo apt-get install -y /tmp/db-tools.deb
   rm -f /tmp/db-tools.deb
