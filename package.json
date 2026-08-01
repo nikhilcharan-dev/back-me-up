@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "test": "node --check src/server.js && node --check src/app.js",
     "generate-key": "node scripts/generate-master-key.js",
     "generate-session-key": "node scripts/generate-session-key.js",
     "create-admin": "node scripts/create-admin.js"
