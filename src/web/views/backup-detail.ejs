@@ -1,0 +1,81 @@
+<%- include('partials/head', { title: 'Backup', username, publicIp, csrfToken, flash }) %>
+<a class="back-link" href="/databases/<%= backup.dbId %>">&larr; Back to database</a>
+<div class="page-header">
+  <div>
+    <h1>Backup snapshot</h1>
+    <div class="subtitle">
+      <%= backup.dbName %> &middot; taken <%= new Date(backup.startedAt).toLocaleString() %>
+    </div>
+  </div>
+  <div class="actions">
+    <span class="badge <%= backup.status %>"><%= backup.status %></span>
+    <% if (backup.status === 'completed' && !filesMissing) { %>
+      <a class="btn small secondary" href="/backups/<%= backup._id %>/download">Download whole snapshot</a>
+    <% } %>
+  </div>
+</div>
+
+<div class="card">
+  <div class="stat-row">
+    <div class="stat"><div class="label">Collections</div><div class="value"><%= collections.length %></div></div>
+    <div class="stat"><div class="label">Size</div><div class="value"><%= fmtBytes(backup.sizeBytes) %></div></div>
+    <div class="stat">
+      <div class="label">Finished</div>
+      <div class="value" style="font-size:13px"><%= backup.finishedAt ? new Date(backup.finishedAt).toLocaleString() : '—' %></div>
+    </div>
+  </div>
+  <% if (backup.error) { %>
+    <p class="help-text" style="margin-bottom:0">Error: <%= backup.error %></p>
+  <% } %>
+</div>
+
+<% if (filesMissing) { %>
+  <div class="notice warning">
+    <% if (backup.status === 'running') { %>
+      This snapshot is still being written — its collections become browsable once the dump finishes.
+    <% } else { %>
+      The dump files for this snapshot are not on disk — pruned by retention, or the dump never
+      finished. Any collections below come from the catalog record and can't be browsed or downloaded.
+    <% } %>
+  </div>
+<% } %>
+
+<div class="card">
+  <div class="section-toolbar">
+    <h2 style="margin:0">Collections</h2>
+    <% if (collections.length > 8) { %>
+      <input type="search" class="inline-filter" placeholder="Filter collections&hellip;" data-filter-rows="#collections-table" />
+    <% } %>
+  </div>
+
+  <% if (collections.length === 0) { %>
+    <div class="empty-state">This snapshot contains no collections.</div>
+  <% } else { %>
+    <table id="collections-table">
+      <thead><tr><th>Collection</th><th>Documents</th><th>Size</th><th></th></tr></thead>
+      <tbody>
+        <% collections.forEach(function(c) { %>
+          <tr>
+            <td>
+              <% if (c.available) { %>
+                <a class="mono" href="/backups/<%= backup._id %>/collections/<%= encodeURIComponent(c.name) %>"><%= c.name %></a>
+              <% } else { %>
+                <span class="mono"><%= c.name %></span>
+              <% } %>
+            </td>
+            <td><%= fmtNum(c.docCount) %></td>
+            <td><%= fmtBytes(c.sizeBytes) %></td>
+            <td class="row-actions">
+              <% if (c.available) { %>
+                <a href="/backups/<%= backup._id %>/collections/<%= encodeURIComponent(c.name) %>">Browse</a>
+                <a href="/backups/<%= backup._id %>/collections/<%= encodeURIComponent(c.name) %>/download?format=json">JSON</a>
+                <a href="/backups/<%= backup._id %>/collections/<%= encodeURIComponent(c.name) %>/download?format=bson">.bson.gz</a>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<%- include('partials/foot') %>

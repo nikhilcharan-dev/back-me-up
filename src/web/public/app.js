@@ -35,6 +35,33 @@ if (restoreForm) {
   });
 }
 
+// Backup browser: copy a rendered document's JSON (data-copy-from="<element id>").
+document.addEventListener("click", (e) => {
+  const button = e.target.closest("[data-copy-from]");
+  if (!button) return;
+  const source = document.getElementById(button.dataset.copyFrom);
+  if (!source || !navigator.clipboard) return;
+  navigator.clipboard.writeText(source.textContent).then(() => {
+    const original = button.textContent;
+    button.textContent = "Copied";
+    setTimeout(() => {
+      button.textContent = original;
+    }, 1200);
+  });
+});
+
+// Client-side row filter for long tables (data-filter-rows="<table selector>").
+document.addEventListener("input", (e) => {
+  const input = e.target.closest("[data-filter-rows]");
+  if (!input) return;
+  const table = document.querySelector(input.dataset.filterRows);
+  if (!table) return;
+  const needle = input.value.trim().toLowerCase();
+  table.querySelectorAll("tbody tr").forEach((row) => {
+    row.style.display = !needle || row.textContent.toLowerCase().includes(needle) ? "" : "none";
+  });
+});
+
 // Restore status polling (restore-status.ejs sets window.__restoreId + __restoreDone)
 if (window.__restoreId && !window.__restoreDone) {
   const statusEl = document.getElementById("restore-status");

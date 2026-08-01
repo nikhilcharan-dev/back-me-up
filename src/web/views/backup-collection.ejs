@@ -1,0 +1,90 @@
+<%- include('partials/head', { title: collection.name, username, publicIp, csrfToken, flash }) %>
+<%
+  var basePath = '/backups/' + backup._id + '/collections/' + encodeURIComponent(collection.name);
+  function pageUrl(p) {
+    return basePath + '?q=' + encodeURIComponent(q) + '&size=' + pageSize + '&page=' + p;
+  }
+%>
+<a class="back-link" href="/backups/<%= backup._id %>">&larr; Back to snapshot</a>
+<div class="page-header">
+  <div>
+    <h1 class="mono" style="font-size:20px"><%= collection.name %></h1>
+    <div class="subtitle">
+      <%= backup.dbName %> &middot; snapshot of <%= new Date(backup.startedAt).toLocaleString() %>
+      &middot; <%= fmtBytes(fileSizeBytes) %> on disk
+    </div>
+  </div>
+  <div class="actions">
+    <a class="btn small secondary" href="<%= basePath %>/download?format=json&q=<%= encodeURIComponent(q) %>">
+      Download JSON<%= q ? ' (filtered)' : '' %>
+    </a>
+    <a class="btn small secondary" href="<%= basePath %>/download?format=bson">Download .bson.gz</a>
+  </div>
+</div>
+
+<div class="card">
+  <form class="search-bar" method="get" action="<%= basePath %>">
+    <input type="search" name="q" value="<%= q %>" placeholder="Search for a value anywhere in these documents — an id, an email, a status&hellip;" />
+    <select name="size" aria-label="Documents per page">
+      <% pageSizeOptions.forEach(function(opt) { %>
+        <option value="<%= opt %>" <%= opt === pageSize ? 'selected' : '' %>><%= opt %> / page</option>
+      <% }) %>
+    </select>
+    <button class="btn" type="submit">Search</button>
+    <% if (q) { %><a class="btn secondary" href="<%= basePath %>">Clear</a><% } %>
+  </form>
+
+  <div class="help-text" style="margin-top:10px">
+    <% if (q) { %>
+      <strong><%= fmtNum(matched) %></strong> match<%= matched === 1 ? '' : 'es' %>
+      in <%= fmtNum(scanned) %> document<%= scanned === 1 ? '' : 's' %> scanned.
+    <% } else { %>
+      <strong><%= fmtNum(matched) %></strong> document<%= matched === 1 ? '' : 's' %> in this collection.
+    <% } %>
+    Matching is a plain case-insensitive substring search over each document's JSON.
+  </div>
+
+  <% if (scanTruncated) { %>
+    <div class="notice warning" style="margin-top:12px">
+      This collection is larger than the browser's scan limit, so only its first
+      <%= fmtNum(scanned) %> documents were read — counts above are partial. The JSON download
+      is never capped and covers the whole collection.
+    </div>
+  <% } %>
+</div>
+
+<div class="card">
+  <% if (documents.length === 0) { %>
+    <div class="empty-state">
+      <% if (q) { %>No documents matched &ldquo;<%= q %>&rdquo;.<% } else { %>This collection is empty.<% } %>
+    </div>
+  <% } else { %>
+    <div class="doc-list">
+      <% documents.forEach(function(d) { %>
+        <article class="doc">
+          <header class="doc-head">
+            <span class="doc-ordinal">#<%= fmtNum(d.ordinal) %></span>
+            <span class="mono doc-id" title="<%= d.id %>"><%= d.id %></span>
+            <button class="btn secondary small" type="button" data-copy-from="doc-<%= d.ordinal %>">Copy</button>
+          </header>
+          <pre class="mono doc-json" id="doc-<%= d.ordinal %>"><%= d.json %></pre>
+        </article>
+      <% }) %>
+    </div>
+
+    <div class="pagination">
+      <% if (hasPrev) { %>
+        <a class="btn secondary small" href="<%= pageUrl(page - 1) %>">&larr; Previous</a>
+      <% } else { %>
+        <span class="btn secondary small disabled">&larr; Previous</span>
+      <% } %>
+      <span class="help-text">Page <%= fmtNum(page) %> of <%= fmtNum(totalPages) %></span>
+      <% if (hasNext) { %>
+        <a class="btn secondary small" href="<%= pageUrl(page + 1) %>">Next &rarr;</a>
+      <% } else { %>
+        <span class="btn secondary small disabled">Next &rarr;</span>
+      <% } %>
+    </div>
+  <% } %>
+</div>
+<%- include('partials/foot') %>

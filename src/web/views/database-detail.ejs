@@ -106,9 +106,12 @@
           <tr>
             <td><%= new Date(b.startedAt).toLocaleString() %></td>
             <td><span class="badge <%= b.status %>"><%= b.status %></span></td>
-            <td><%= b.sizeBytes ? (b.sizeBytes / 1024).toFixed(1) + ' KB' : '—' %></td>
+            <td><%= fmtBytes(b.sizeBytes) %></td>
             <td><%= b.collections ? b.collections.length : 0 %></td>
-            <td><% if (b.status === 'completed') { %><a href="/backups/<%= b._id %>/download">Download</a><% } %></td>
+            <td class="row-actions">
+              <a href="/backups/<%= b._id %>">Browse</a>
+              <% if (b.status === 'completed') { %><a href="/backups/<%= b._id %>/download">Download</a><% } %>
+            </td>
           </tr>
         <% }) %>
       </tbody>

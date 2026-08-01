@@ -19,6 +19,8 @@ continuously captures every change, so you can restore a database to its exact s
 - **Register** any number of Atlas databases by connection URL, with a name and tags —
   through the admin UI or the JSON API.
 - **Base snapshots** on a schedule (in-process cron), downloadable as `.tar.gz`.
+- **Browse a snapshot without restoring it** — open a backup, open a collection, search its
+  documents, and download that collection as JSON or as the raw `.bson.gz`.
 - **Continuous capture** of every insert/update/delete via Change Streams (near-zero RPO).
 - **Restore to a timestamp** — pick the newest base ≤ T, restore it, then replay captured
   changes up to exactly T, into a **new** target (never over the live DB by default).

@@ -1,4 +1,4 @@
-name: Bare VM CI/CD Deployment
+name: CI/CD Pipeline
 
 on:
   push:
@@ -27,7 +27,7 @@ jobs:
         run: npm test
 
   deploy:
-    name: Deploy to Bare VM (/var/www/back-me-up)
+    name: Deploy to VM (/var/www/back-me-up)
     needs: lint-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest

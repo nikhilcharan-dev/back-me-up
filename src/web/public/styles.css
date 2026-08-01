@@ -118,12 +118,12 @@ tr:last-child td { border-bottom: none; }
 .btn.danger { background: var(--danger); }
 .btn.danger:hover { background: var(--danger-hover); }
 .btn.small { padding: 5px 10px; font-size: 12px; }
-.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.btn[disabled], .btn.disabled { opacity: 0.5; cursor: not-allowed; }
 
 .form-row { margin-bottom: 14px; }
 .form-row label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 5px; color: var(--text); }
 .form-row .hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-input[type=text], input[type=password], input[type=url], input[type=datetime-local], select {
+input[type=text], input[type=password], input[type=url], input[type=datetime-local], input[type=search], select {
   width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px;
   font-size: 13px; font-family: var(--font); background: #fff; color: var(--text);
 }
@@ -160,3 +160,29 @@ input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: 1
 .section-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .back-link { font-size: 13px; margin-bottom: 14px; display: inline-block; }
 .help-text { font-size: 12.5px; color: var(--text-muted); }
+
+.notice { padding: 10px 14px; border-radius: 6px; font-size: 12.5px; margin-bottom: 20px; }
+.notice.warning { background: var(--warning-bg); color: var(--warning); }
+
+.row-actions { display: flex; gap: 12px; justify-content: flex-end; font-size: 12.5px; }
+
+/* Backup browser */
+.search-bar { display: flex; gap: 8px; align-items: center; }
+.search-bar input[type=search] { flex: 1; }
+.search-bar select { width: auto; }
+.inline-filter { width: 220px; padding: 5px 9px !important; font-size: 12.5px !important; }
+
+.doc-list { display: flex; flex-direction: column; gap: 12px; }
+.doc { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.doc-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 12px; background: var(--muted-bg); border-bottom: 1px solid var(--border);
+}
+.doc-ordinal { font-size: 11.5px; color: var(--text-muted); font-weight: 600; }
+.doc-id { flex: 1; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-json {
+  margin: 0; padding: 12px; max-height: 380px; overflow: auto;
+  background: var(--surface); font-size: 12.5px; line-height: 1.45; white-space: pre;
+}
+
+.pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; }

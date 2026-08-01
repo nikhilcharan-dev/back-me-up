@@ -13,6 +13,7 @@ import dashboardRoutes from "./web/routes/dashboardRoutes.js";
 import databaseWebRoutes from "./web/routes/databaseWebRoutes.js";
 import restoreStatusRoutes from "./web/routes/restoreStatusRoutes.js";
 import downloadRoutes from "./web/routes/downloadRoutes.js";
+import backupBrowseRoutes from "./web/routes/backupBrowseRoutes.js";
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -42,6 +43,7 @@ export async function buildApp() {
   app.register(databaseWebRoutes);
   app.register(restoreStatusRoutes);
   app.register(downloadRoutes);
+  app.register(backupBrowseRoutes);
 
   return app;
 }
