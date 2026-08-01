@@ -1,0 +1,75 @@
+name: Bare VM CI/CD Deployment
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-test:
+    name: Lint & Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Syntax & Validation Checks
+        run: npm test
+
+  deploy:
+    name: Deploy to Bare VM (/var/www/back-me-up)
+    needs: lint-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to Bare VM via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_PORT || 22 }}
+          script: |
+            set -e
+            TARGET_DIR="/var/www/back-me-up"
+            
+            # Ensure target directory exists and user has write permissions
+            sudo mkdir -p $TARGET_DIR
+            sudo chown -R $USER:$USER $TARGET_DIR
+
+            # Navigate to application directory
+            cd $TARGET_DIR
+
+            # Pull or sync latest code from main
+            if [ -d ".git" ]; then
+              git fetch origin main
+              git reset --hard origin/main
+            else
+              git clone https://github.com/nikhilcharan-dev/back-me-up.git .
+            fi
+
+            # Install production dependencies
+            npm ci --omit=dev
+
+            # Reload or start application with PM2
+            if pm2 list | grep -q "back-me-up"; then
+              pm2 reload back-me-up
+            else
+              pm2 start src/server.js --name back-me-up
+            fi
+
+            # Save PM2 state across reboot
+            pm2 save
