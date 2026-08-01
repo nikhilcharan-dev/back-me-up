@@ -8,17 +8,28 @@
 
 set -euo pipefail
 
-BLOCK_DEVICE="/dev/oracleoci/oraclevdb"
 MOUNT_POINT="/mnt/back-me-up-storage"
 APP_DIR="/var/www/back-me-up"
 
-echo "===> 1. Updating System Packages..."
-sudo apt-get update && sudo apt-get upgrade -y
-sudo apt-get install -y curl ca-certificates git build-essential xfsprogs e2fsprogs
+# Auto-detect block device (OCI symlink, /dev/sdb, /dev/vdb, or unmounted disk)
+BLOCK_DEVICE=""
+for dev in "/dev/oracleoci/oraclevdb" "/dev/sdb" "/dev/vdb" "/dev/nvme1n1"; do
+  if [ -b "$dev" ]; then
+    BLOCK_DEVICE="$dev"
+    break
+  fi
+done
+
+if [ -z "$BLOCK_DEVICE" ]; then
+  DETECTED=$(lsblk -dn -o NAME,TYPE,MOUNTPOINT | awk '$2=="disk" && $3=="" {print "/dev/"$1}' | head -n1)
+  if [ -n "$DETECTED" ]; then
+    BLOCK_DEVICE="$DETECTED"
+  fi
+fi
 
 echo "===> 2. Formatting & Mounting OCI Block Volume..."
 # Check if block device exists
-if [ -b "$BLOCK_DEVICE" ]; then
+if [ -n "$BLOCK_DEVICE" ] && [ -b "$BLOCK_DEVICE" ]; then
   echo "Found block device at $BLOCK_DEVICE"
   
   # Format with ext4 if not already formatted
