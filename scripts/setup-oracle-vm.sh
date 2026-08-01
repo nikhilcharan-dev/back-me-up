@@ -11,9 +11,9 @@ set -euo pipefail
 MOUNT_POINT="/mnt/back-me-up-storage"
 APP_DIR="/var/www/back-me-up"
 
-# Auto-detect block device (OCI symlink, /dev/sdb, /dev/vdb, or unmounted disk)
+# Auto-detect secondary block device (OCI symlink, /dev/sdb, /dev/vdb, or non-root disk)
 BLOCK_DEVICE=""
-for dev in "/dev/oracleoci/oraclevdb" "/dev/sdb" "/dev/vdb" "/dev/nvme1n1"; do
+for dev in "/dev/oracleoci/oraclevdb" "/dev/sdb" "/dev/vdb" "/dev/sdc" "/dev/nvme1n1"; do
   if [ -b "$dev" ]; then
     BLOCK_DEVICE="$dev"
     break
@@ -21,8 +21,9 @@ for dev in "/dev/oracleoci/oraclevdb" "/dev/sdb" "/dev/vdb" "/dev/nvme1n1"; do
 done
 
 if [ -z "$BLOCK_DEVICE" ]; then
-  DETECTED=$(lsblk -dn -o NAME,TYPE,MOUNTPOINT | awk '$2=="disk" && $3=="" {print "/dev/"$1}' | head -n1)
-  if [ -n "$DETECTED" ]; then
+  # Exclude root system drives (sda, nvme0n1)
+  DETECTED=$(lsblk -dn -o NAME,TYPE | awk '$1 !~ /^(sda|nvme0n1)$/ && $2=="disk" {print "/dev/"$1}' | head -n1)
+  if [ -n "$DETECTED" ] && [ -b "$DETECTED" ]; then
     BLOCK_DEVICE="$DETECTED"
   fi
 fi
