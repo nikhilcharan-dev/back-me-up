@@ -16,6 +16,16 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
+      // V8's heap is not capped here by default — the "32 MB" you see on the
+      // Metrics page is just how much heap V8 has currently allocated for an
+      // idle process, not a ceiling; it grows on demand (with GC pauses as it
+      // does) up to V8's own default limit, which itself scales off the host's
+      // RAM. This sets an explicit floor/ceiling instead of trusting that
+      // default: 4GB of heap headroom on this 31.3GB host, comfortably under
+      // the 8G RSS restart cap above (heap is a subset of RSS — native buffers
+      // for gzip/tar/mongodb driver sit outside it, so heap shouldn't be set
+      // anywhere near the RSS cap).
+      node_args: '--max-old-space-size=4096',
       // Restart-on-leak safety net, not a usage ceiling: the deploy host has 31.3GB,
       // so this leaves headroom for the catalog Mongo container, nginx and the OS
       // while still catching a real leak long before it takes the box down.
