@@ -48,6 +48,38 @@ export function computeGfsKeepSet(backups, retention, now = new Date()) {
   return keep;
 }
 
+// Read-only counterpart to pruneDatabase(): same GFS keep-set math, no
+// deletes. Takes `retention` as a parameter (rather than reading the saved
+// policy) so the UI can preview the impact of a policy the user is about to
+// save, before it's persisted.
+export async function previewPrune(dbId, retention) {
+  if (!retention) {
+    return { prunedBases: 0, prunedSlices: 0, keptBases: 0, totalBases: 0 };
+  }
+
+  const dbRecord = await findDatabaseById(dbId);
+  if (!dbRecord) throw new Error(`No registered database with id ${dbId}`);
+
+  const backups = await listBaseBackupsForDb(dbId);
+  const keepSet = computeGfsKeepSet(backups, retention);
+  const completed = backups.filter((b) => b.status === "completed");
+  const toDelete = completed.filter((b) => !keepSet.has(String(b._id)));
+
+  let prunedSlices = 0;
+  const retainedBackups = completed.filter((b) => keepSet.has(String(b._id)));
+  if (retainedBackups.length > 0) {
+    const oldestRetainedStart = retainedBackups.reduce(
+      (min, b) => (b.startedAt < min ? b.startedAt : min),
+      retainedBackups[0].startedAt
+    );
+    const floorSec = Math.floor(oldestRetainedStart.getTime() / 1000);
+    const slices = await listChangeSlicesForDb(dbId);
+    prunedSlices = slices.filter((s) => s.toClusterTs.t < floorSec).length;
+  }
+
+  return { prunedBases: toDelete.length, prunedSlices, keptBases: keepSet.size, totalBases: completed.length };
+}
+
 // Deletes both the base_backups records/storage that fall outside the GFS
 // keep-set, and any change slice that's now older than every retained base's
 // dump window — never a slice a retained base could still need to replay

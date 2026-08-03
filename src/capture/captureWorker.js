@@ -160,6 +160,14 @@ export class CaptureWorker {
     await updateDatabase(this.dbId, { captureStatus: "stopped", updatedAt: new Date() });
   }
 
+  // The change stream can die on its own — a network blip, cursor timeout, or
+  // continuity break all tear down the worker via handleError()/the "close"
+  // listener, not via stop(). captureManager uses this to tell a worker that's
+  // still doing its job apart from one that's a corpse left behind in its map.
+  isRunning() {
+    return !this.stopped;
+  }
+
   async stopInternal() {
     this.stopped = true;
     if (this.flushTimer) clearInterval(this.flushTimer);

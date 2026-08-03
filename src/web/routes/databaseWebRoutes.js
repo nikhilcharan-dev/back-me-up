@@ -8,6 +8,7 @@ import {
   rotateConnectionUri,
   setTestRestoreTarget,
   setRetentionPolicy,
+  validateRetention,
   softDeleteDatabase,
   updateDatabaseSettings,
   DATABASE_TIERS,
@@ -15,7 +16,7 @@ import {
 import { runBaseBackup } from "../../services/backupService.js";
 import { runRestore } from "../../services/restoreService.js";
 import { runScheduledTestRestore } from "../../services/testRestoreService.js";
-import { pruneDatabase } from "../../services/retentionService.js";
+import { pruneDatabase, previewPrune } from "../../services/retentionService.js";
 import { startCapture, stopCapture, isCaptureRunning } from "../../capture/captureManager.js";
 import {
   scheduleBaseBackups,
@@ -51,10 +52,11 @@ async function loadDetail(request, reply, extra = {}) {
   const dbRecord = await getRegisteredDatabase(request.params.id);
   if (!dbRecord) return null;
   const db = toPublicDatabase(dbRecord);
-  const [backups, restoreJobs, testRestoreRuns] = await Promise.all([
+  const [backups, restoreJobs, testRestoreRuns, retentionPreview] = await Promise.all([
     listBaseBackupsForDb(request.params.id),
     listRestoreJobsForDb(request.params.id),
     listTestRestoreRunsForDb(request.params.id),
+    previewPrune(request.params.id, db.retention),
   ]);
   return {
     ...(await baseViewContext(request, reply)),
@@ -65,6 +67,7 @@ async function loadDetail(request, reply, extra = {}) {
     restoreJobs,
     testRestoreRuns,
     captureRunning: isCaptureRunning(request.params.id),
+    retentionPreview,
     ...extra,
   };
 }
@@ -222,15 +225,32 @@ export default async function databaseWebRoutes(app) {
 
   app.post("/databases/:id/retention", { preHandler: [requireAuth, app.csrfProtection] }, async (request, reply) => {
     const { hourly, daily, weekly } = request.body ?? {};
-    const toNum = (v) => (v && Number(v) > 0 ? Number(v) : 0);
     try {
-      await setRetentionPolicy(request.params.id, { hourly: toNum(hourly), daily: toNum(daily), weekly: toNum(weekly) });
+      await setRetentionPolicy(request.params.id, { hourly, daily, weekly });
       setFlash(request, "success", "Retention policy saved.");
     } catch (err) {
       setFlash(request, "error", err.message);
     }
     return reply.redirect(`/databases/${request.params.id}`);
   });
+
+  // AJAX-only: lets the retention form show "N backup(s), M slice(s) would be
+  // removed" for whatever the user has typed *before* they save it, using the
+  // same CSRF token already embedded in the page's forms.
+  app.post(
+    "/databases/:id/retention/preview",
+    { preHandler: [requireAuth, app.csrfProtection] },
+    async (request, reply) => {
+      const { hourly, daily, weekly } = request.body ?? {};
+      try {
+        const retention = validateRetention({ hourly, daily, weekly });
+        const result = await previewPrune(request.params.id, retention);
+        return result;
+      } catch (err) {
+        return reply.code(400).send({ error: err.message });
+      }
+    }
+  );
 
   app.post(
     "/databases/:id/retention/run",

@@ -23,6 +23,40 @@ export function isKnownTier(tier) {
   return DATABASE_TIERS.some((t) => t.value === tier);
 }
 
+// Counts, not days: "keep the newest backup per hour/day/week bucket, going
+// back this many buckets" (see retentionService.computeGfsKeepSet). Bounded
+// well above any realistic policy so a typo doesn't silently create an
+// effectively-unlimited retention window.
+export const RETENTION_MAX = 1000;
+const RETENTION_FIELDS = ["hourly", "daily", "weekly"];
+
+// Shared by registerDatabase() and setRetentionPolicy() so a policy can't be
+// saved from either path without being validated. Returns null for "no
+// policy" (all-zero/blank), which downstream code already treats as "keep
+// every backup forever."
+export function validateRetention(retention) {
+  if (retention === null || retention === undefined) return null;
+
+  const out = {};
+  for (const field of RETENTION_FIELDS) {
+    const raw = retention[field];
+    if (raw === undefined || raw === null || raw === "") {
+      out[field] = 0;
+      continue;
+    }
+    const num = Number(raw);
+    if (!Number.isInteger(num) || num < 0 || num > RETENTION_MAX) {
+      throw new Error(
+        `Retention "${field}" must be a whole number between 0 and ${RETENTION_MAX} (got "${raw}").`
+      );
+    }
+    out[field] = num;
+  }
+
+  if (out.hourly === 0 && out.daily === 0 && out.weekly === 0) return null;
+  return out;
+}
+
 // Blank means "no schedule"; anything else has to be a cron expression node-cron
 // will actually accept, otherwise the schedule is silently never registered.
 function normalizeCron(expr) {
@@ -57,6 +91,7 @@ export async function registerDatabase({
 }) {
   const dbName = extractDbName(connectionUri);
   const normalizedCron = normalizeCron(scheduleCron);
+  const normalizedRetention = validateRetention(retention);
   await testConnection(connectionUri);
 
   if (testRestoreTargetUri) {
@@ -70,7 +105,7 @@ export async function registerDatabase({
     tier,
     tags,
     scheduleCron: normalizedCron,
-    retention,
+    retention: normalizedRetention,
     pitrEnabled,
     testRestoreTargetUriEnc: testRestoreTargetUri ? encrypt(testRestoreTargetUri, config.masterKey) : null,
     testRestoreCron,
@@ -184,8 +219,9 @@ export async function setRetentionPolicy(dbId, retention) {
   const dbRecord = await findDatabaseById(dbId);
   if (!dbRecord) throw new Error(`No registered database with id ${dbId}`);
 
-  await updateDatabase(dbId, { retention, updatedAt: new Date() });
-  await insertAuditEntry({ actor: "api", action: "set-retention-policy", dbId, detail: retention });
+  const normalized = validateRetention(retention);
+  await updateDatabase(dbId, { retention: normalized, updatedAt: new Date() });
+  await insertAuditEntry({ actor: "api", action: "set-retention-policy", dbId, detail: normalized });
   return getRegisteredDatabase(dbId);
 }
 

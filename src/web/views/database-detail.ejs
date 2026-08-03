@@ -19,7 +19,7 @@
 
 <div class="grid cols-2">
   <div class="card">
-    <h2>Capture</h2>
+    <h2>Capture<%- include('partials/info-icon', { text: 'Continuously streams every write to this database (via a MongoDB change stream) so point-in-time restore has near-zero data loss. Stopping it pauses PITR until you start it again.' }) %></h2>
     <div class="stat-row">
       <div class="stat"><div class="label">Status</div><div class="value"><span class="badge <%= db.captureStatus %>"><%= db.captureStatus %></span></div></div>
       <div class="stat"><div class="label">Last captured</div><div class="value" style="font-size:13px"><%= db.lastCaptureTs ? new Date(db.lastCaptureTs.t * 1000).toLocaleString() : '—' %></div></div>
@@ -52,7 +52,7 @@
   </div>
 
   <div class="card">
-    <h2>Restore</h2>
+    <h2>Restore<%- include('partials/info-icon', { text: 'Restores this database into a fresh target — never over a live one. Either to an exact point in time (using capture + a base backup) or to a specific backup snapshot.' }) %></h2>
     <form method="post" action="/databases/<%= db._id %>/restore" id="restore-form">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <input type="hidden" id="targetTimestampIso" name="targetTimestamp" />
@@ -102,7 +102,7 @@
 
 <div class="card">
   <div class="section-toolbar">
-    <h2 style="margin:0">Backups</h2>
+    <h2 style="margin:0">Backups<%- include('partials/info-icon', { text: 'Full snapshots taken on this database\'s schedule. Point-in-time restores start from the nearest one of these and replay captured changes forward from it.' }) %></h2>
   </div>
   <% if (backups.length === 0) { %>
     <div class="empty-state">No backups yet.</div>
@@ -128,7 +128,7 @@
 </div>
 
 <div class="card">
-  <h2>Recent restores</h2>
+  <h2>Recent restores<%- include('partials/info-icon', { text: 'History of restore jobs run for this database, with their verification results (row/field counts compared against what was expected).' }) %></h2>
   <% if (restoreJobs.length === 0) { %>
     <div class="empty-state">No restores yet.</div>
   <% } else { %>
@@ -150,7 +150,7 @@
 
 <div class="grid cols-2">
   <div class="card">
-    <h2>Retention</h2>
+    <h2>Retention<%- include('partials/info-icon', { text: 'Keeps the newest backup per hour/day/week bucket, going back this many buckets (grandfather-father-son). The single newest backup is always kept. Everything else is deleted when retention runs.' }) %></h2>
     <p class="help-text">
       <% if (db.retention) { %>
         Hourly: <%= db.retention.hourly || 0 %> &middot; Daily: <%= db.retention.daily || 0 %> &middot; Weekly: <%= db.retention.weekly || 0 %>
@@ -158,21 +158,42 @@
         No policy set — backups are kept until manually deleted.
       <% } %>
     </p>
-    <form method="post" action="/databases/<%= db._id %>/retention" class="grid cols-2" style="margin-bottom:10px">
+    <% if (db.retention) { %>
+      <p class="help-text" data-retention-current-impact>
+        Running retention now would remove <strong><%= retentionPreview.prunedBases %></strong> of <%= retentionPreview.totalBases %> backup(s)
+        and <strong><%= retentionPreview.prunedSlices %></strong> change slice(s), keeping <%= retentionPreview.keptBases %>.
+      </p>
+    <% } %>
+    <form
+      method="post"
+      action="/databases/<%= db._id %>/retention"
+      class="grid cols-2"
+      style="margin-bottom:10px"
+      data-retention-form
+      data-preview-url="/databases/<%= db._id %>/retention/preview"
+    >
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-      <div class="form-row"><label>Hourly</label><input type="text" name="hourly" value="<%= (db.retention && db.retention.hourly) || '' %>" placeholder="24" /></div>
-      <div class="form-row"><label>Daily</label><input type="text" name="daily" value="<%= (db.retention && db.retention.daily) || '' %>" placeholder="30" /></div>
-      <div class="form-row" style="grid-column:1/-1"><label>Weekly</label><input type="text" name="weekly" value="<%= (db.retention && db.retention.weekly) || '' %>" placeholder="12" /></div>
-      <div style="grid-column:1/-1"><button class="btn secondary small" type="submit">Save policy</button></div>
+      <div class="form-row"><label>Hourly</label><input type="number" min="0" max="1000" step="1" name="hourly" value="<%= (db.retention && db.retention.hourly) || '' %>" placeholder="24" /></div>
+      <div class="form-row"><label>Daily</label><input type="number" min="0" max="1000" step="1" name="daily" value="<%= (db.retention && db.retention.daily) || '' %>" placeholder="30" /></div>
+      <div class="form-row" style="grid-column:1/-1"><label>Weekly</label><input type="number" min="0" max="1000" step="1" name="weekly" value="<%= (db.retention && db.retention.weekly) || '' %>" placeholder="12" /></div>
+      <div style="grid-column:1/-1; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+        <button class="btn secondary small" type="submit">Save policy</button>
+        <button class="btn secondary small" type="button" data-retention-preview-btn>Preview impact</button>
+      </div>
+      <div style="grid-column:1/-1"><span class="help-text" data-retention-preview-result></span></div>
     </form>
-    <form method="post" action="/databases/<%= db._id %>/retention/run">
+    <form
+      method="post"
+      action="/databases/<%= db._id %>/retention/run"
+      <% if (db.retention) { %>data-confirm="This will remove <%= retentionPreview.prunedBases %> backup(s) and <%= retentionPreview.prunedSlices %> change slice(s) right now. Continue?"<% } %>
+    >
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
       <button class="btn secondary small" type="submit">Run retention now</button>
     </form>
   </div>
 
   <div class="card">
-    <h2>Test restores</h2>
+    <h2>Test restores<%- include('partials/info-icon', { text: 'Periodically restores a backup to a scratch database on the configured schedule, to verify backups actually work — without touching production data.' }) %></h2>
     <p class="help-text">Scheduled restores to a scratch target validate that backups actually work.</p>
     <form method="post" action="/databases/<%= db._id %>/test-restore-target" style="margin-bottom:12px">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
@@ -205,10 +226,10 @@
 </div>
 
 <div class="card">
-  <h2>Danger zone</h2>
+  <h2>Danger zone<%- include('partials/info-icon', { text: 'Irreversible or high-impact actions for this registration: rotating credentials or unregistering the database entirely.' }) %></h2>
   <div class="grid cols-2">
     <div>
-      <h3>Rotate credentials</h3>
+      <h3>Rotate credentials<%- include('partials/info-icon', { text: 'Updates the connection URL after rotating database credentials (e.g. a new Atlas user). Restarts capture with the new URL while preserving the resume position, so PITR continuity isn\'t broken.' }) %></h3>
       <form method="post" action="/databases/<%= db._id %>/rotate-uri">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
         <div class="form-row"><input type="text" name="connectionUri" required placeholder="New mongodb+srv:// URL, same database" /></div>
@@ -216,7 +237,7 @@
       </form>
     </div>
     <div>
-      <h3>Unregister</h3>
+      <h3>Unregister<%- include('partials/info-icon', { text: 'Stops capture and scheduled jobs for this database. Existing backups and change slices are kept and remain restorable.' }) %></h3>
       <p class="help-text">Stops capture and schedules. Existing backups are kept and stay restorable.</p>
       <form method="post" action="/databases/<%= db._id %>/delete" data-confirm="Unregister <%= db.name %>? Capture and schedules will stop.">
         <input type="hidden" name="_csrf" value="<%= csrfToken %>" />

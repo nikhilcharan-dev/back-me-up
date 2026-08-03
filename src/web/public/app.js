@@ -139,6 +139,38 @@ document.querySelectorAll("[data-toggle-schedule-display]").forEach((button) => 
   });
 });
 
+// Retention form (database-detail.ejs): lets the user check the impact of
+// whatever hourly/daily/weekly values are currently typed — before saving —
+// by asking the server to run the same keep-set math as a dry run.
+document.querySelectorAll("[data-retention-preview-btn]").forEach((button) => {
+  const form = button.closest("[data-retention-form]");
+  const resultEl = form && form.querySelector("[data-retention-preview-result]");
+  if (!form || !resultEl) return;
+
+  button.addEventListener("click", () => {
+    resultEl.textContent = "Checking…";
+    fetch(form.dataset.previewUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(new FormData(form)),
+    })
+      .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          resultEl.textContent = data.error || "Could not compute preview.";
+          return;
+        }
+        resultEl.textContent =
+          data.prunedBases === 0 && data.prunedSlices === 0
+            ? "This policy would not remove anything right now."
+            : `Would remove ${data.prunedBases} of ${data.totalBases} backup(s) and ${data.prunedSlices} change slice(s), keeping ${data.keptBases}.`;
+      })
+      .catch(() => {
+        resultEl.textContent = "Could not compute preview.";
+      });
+  });
+});
+
 // Backup browser: copy a rendered document's JSON (data-copy-from="<element id>").
 document.addEventListener("click", (e) => {
   const button = e.target.closest("[data-copy-from]");
@@ -175,11 +207,12 @@ if (window.__restoreId && !window.__restoreDone) {
     if (statusEl) statusEl.innerHTML = `<span class="badge ${job.status}">${job.status}</span>`;
     if (resultEl && (job.status === "completed" || job.status === "failed")) {
       const v = job.verification || {};
+      const infoIcon = (text) => `<span class="info-icon" title="${text}" tabindex="0" aria-label="${text}">&#9432;</span>`;
       resultEl.innerHTML = `
-        <h3>Verification</h3>
+        <h3>Verification${infoIcon("Document/row counts in the restored target, compared against what capture and the base backup expected to find there.")}</h3>
         <p>${v.ok ? "Counts match expected." : "Counts diverged from expected — inspect before trusting this restore."}</p>
         <pre class="mono">${JSON.stringify(v, null, 2)}</pre>
-        ${job.replayStats ? `<h3>Replay</h3><pre class="mono">${JSON.stringify(job.replayStats, null, 2)}</pre>` : ""}
+        ${job.replayStats ? `<h3>Replay${infoIcon("Stats from replaying captured change events on top of the base backup to reach the requested point in time.")}</h3><pre class="mono">${JSON.stringify(job.replayStats, null, 2)}</pre>` : ""}
       `;
     }
     return job.status === "completed" || job.status === "failed";

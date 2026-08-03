@@ -58,7 +58,7 @@
 </div>
 
 <div class="card" style="max-width:640px">
-  <h3>Not editable here</h3>
+  <h3>Not editable here<%- include('partials/info-icon', { text: 'These fields have their own dedicated forms on the database page, each with checks that this quick-edit form doesn\'t run.' }) %></h3>
   <p class="help-text">
     The <strong>connection URL</strong> is changed through <em>Rotate credentials</em> on the database
     page — it re-checks that the new URL still points at <span class="mono"><%= db.dbName %></span>, so a

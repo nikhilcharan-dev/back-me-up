@@ -42,7 +42,7 @@
 
 <div class="card">
   <div class="section-toolbar">
-    <h2 style="margin:0">Collections</h2>
+    <h2 style="margin:0">Collections<%- include('partials/info-icon', { text: 'Every collection captured in this snapshot. Browse or download each one individually, or download the whole snapshot from the top of the page.' }) %></h2>
     <% if (collections.length > 8) { %>
       <input type="search" class="inline-filter" placeholder="Filter collections&hellip;" data-filter-rows="#collections-table" />
     <% } %>

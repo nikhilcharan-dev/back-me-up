@@ -7,7 +7,17 @@ const workers = new Map(); // dbId (string) -> CaptureWorker
 
 export async function startCapture(dbId) {
   const key = String(dbId);
-  if (workers.has(key)) return workers.get(key);
+  const existing = workers.get(key);
+  if (existing) {
+    // A worker whose change stream died on its own (network blip, cursor
+    // timeout, continuity break) tears itself down but stays in this map —
+    // only an explicit stopCapture() deletes the entry. Without this check,
+    // handing back that corpse makes "start" a no-op: captureStatus reads
+    // "stopped" while the map insists capture is running, and no new change
+    // stream ever opens.
+    if (existing.isRunning()) return existing;
+    workers.delete(key);
+  }
 
   const worker = new CaptureWorker(key, {
     onContinuityBreak: async (brokenDbId) => {
@@ -48,7 +58,8 @@ export async function stopCapture(dbId) {
 }
 
 export function isCaptureRunning(dbId) {
-  return workers.has(String(dbId));
+  const worker = workers.get(String(dbId));
+  return Boolean(worker && worker.isRunning());
 }
 
 // Called at server startup so restarting the process resumes every PITR-enabled
