@@ -64,12 +64,11 @@ jobs:
             # Install production dependencies
             npm ci --omit=dev
 
-            # Reload or start application with root's PM2
-            if sudo pm2 list | grep -q "back-me-up"; then
-              sudo pm2 restart back-me-up
-            else
-              sudo pm2 start src/server.js --name back-me-up
-            fi
+            # startOrReload starts the app fresh on first deploy, or restarts it
+            # picking up this run's ecosystem.config.cjs (name, env, memory cap) on
+            # every deploy after that — so changes to that file actually take
+            # effect instead of being silently ignored by a bare `pm2 start`.
+            sudo pm2 startOrReload ecosystem.config.cjs
 
             # Save PM2 state across reboot for root
             sudo pm2 save
