@@ -96,6 +96,35 @@ document.querySelectorAll("[data-schedule-builder]").forEach((root) => {
   sync();
 });
 
+// Bottom-right VM clock (partials/foot.ejs). Seeded from the server's own
+// Date.now() at render time — not the browser's clock — since the point is
+// showing the time schedules actually fire in (node-cron runs in server-local
+// time; see the schedule builder's "server time" note). Ticks forward
+// client-side afterward using a monotonic clock (performance.now()) rather than
+// counting setInterval firings, so it doesn't drift if the tab is backgrounded.
+(function () {
+  const clock = document.getElementById("server-clock");
+  const valueEl = document.getElementById("server-clock-value");
+  if (!clock || !valueEl) return;
+
+  const epoch0 = Number(clock.dataset.epoch);
+  const perfStart = performance.now();
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+
+  const tick = () => {
+    valueEl.textContent = formatter.format(new Date(epoch0 + (performance.now() - perfStart)));
+  };
+  tick();
+  setInterval(tick, 1000);
+})();
+
 // Database page: toggle the Schedule stat between its plain-English reading
 // (default) and the raw cron expression it compiles to.
 document.querySelectorAll("[data-toggle-schedule-display]").forEach((button) => {

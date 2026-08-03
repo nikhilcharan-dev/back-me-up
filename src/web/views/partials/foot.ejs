@@ -1,4 +1,10 @@
 </div>
+<% if (typeof serverEpochMs !== 'undefined') { %>
+  <div class="server-clock" id="server-clock" data-epoch="<%= serverEpochMs %>">
+    <div class="server-clock-label">VM time &middot; <%= serverTimeZone %></div>
+    <div class="server-clock-value" id="server-clock-value"></div>
+  </div>
+<% } %>
 <script src="/static/app.js"></script>
 </body>
 </html>

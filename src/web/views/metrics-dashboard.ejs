@@ -50,7 +50,7 @@
         <tr>
           <th>Database</th>
           <th>Capture</th>
-          <th>Capture lag</th>
+          <th title="Time since the last change event was captured — climbs on an idle database even when capture is perfectly healthy. Continuity breaks (last column) is the signal that capture actually fell behind.">Capture lag &#9432;</th>
           <th>Last backup age</th>
           <th>Backups</th>
           <th>Restores</th>
@@ -85,6 +85,12 @@
         <% }) %>
       </tbody>
     </table>
+    <p class="help-text" style="margin:12px 0 0">
+      <strong>Capture lag</strong> is time since the last captured change event, not a backlog —
+      it's expected to climb on a database with no recent writes, same as an idle clock. If capture
+      genuinely falls behind (e.g. a change-stream resume token expires), that shows up as a
+      <strong>continuity break</strong>, which forces a fresh base backup to recover.
+    </p>
   <% } %>
 </div>
 <%- include('partials/foot') %>
