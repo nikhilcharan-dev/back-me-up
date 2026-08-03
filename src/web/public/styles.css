@@ -128,7 +128,7 @@ input[type=text], input[type=password], input[type=url], input[type=datetime-loc
   font-size: 13px; font-family: var(--font); background: #fff; color: var(--text);
 }
 input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: 1px; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .actions form { display: inline; }
 
 .flash { padding: 10px 14px; border-radius: 6px; margin-bottom: 18px; font-size: 13px; }

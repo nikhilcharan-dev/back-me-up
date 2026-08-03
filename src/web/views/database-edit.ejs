@@ -1,0 +1,72 @@
+<%- include('partials/head', { title: 'Edit ' + db.name, username, publicIp, csrfToken, flash }) %>
+<a class="back-link" href="/databases/<%= db._id %>">&larr; Back to database</a>
+<div class="page-header">
+  <div>
+    <h1>Edit <%= db.name %></h1>
+    <div class="subtitle"><%= db.dbName %></div>
+  </div>
+</div>
+
+<div class="card" style="max-width:640px">
+  <form method="post" action="/databases/<%= db._id %>/edit">
+    <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+
+    <div class="form-row">
+      <label for="name">Name</label>
+      <input type="text" id="name" name="name" required value="<%= db.name %>" />
+    </div>
+
+    <div class="form-row">
+      <label for="tags">Tags</label>
+      <input type="text" id="tags" name="tags" value="<%= (db.tags || []).join(', ') %>" placeholder="prod, orders, us-east" />
+      <div class="hint">Comma-separated, optional — for your own organization.</div>
+    </div>
+
+    <div class="form-row">
+      <label for="tier">Tier</label>
+      <select id="tier" name="tier">
+        <% var known = tiers.some(function(t) { return t.value === db.tier; }); %>
+        <% tiers.forEach(function(t) { %>
+          <option value="<%= t.value %>" <%= t.value === db.tier ? 'selected' : '' %>><%= t.label %></option>
+        <% }) %>
+        <% if (!known && db.tier) { %>
+          <option value="<%= db.tier %>" selected><%= db.tier %> (current)</option>
+        <% } %>
+      </select>
+      <div class="hint">Informational only — it records which deployment this database lives on.</div>
+    </div>
+
+    <div class="form-row">
+      <label style="font-weight:normal">
+        <input type="checkbox" name="pitrEnabled" value="true" <%= db.pitrEnabled ? 'checked' : '' %> style="width:auto" />
+        Enable continuous capture (near-zero RPO)
+      </label>
+      <div class="hint">
+        Turning this on starts a change-stream worker as soon as you save; turning it off stops one that's running.
+        Required for point-in-time restore.
+      </div>
+    </div>
+
+    <div class="form-row">
+      <label for="scheduleCron">Base backup schedule (cron, optional)</label>
+      <input type="text" id="scheduleCron" name="scheduleCron" value="<%= db.scheduleCron || '' %>" placeholder="0 * * * *  (hourly)" />
+      <div class="hint">Leave blank to only take backups manually. Saving re-applies the schedule immediately.</div>
+    </div>
+
+    <div class="actions">
+      <button class="btn" type="submit">Save changes</button>
+      <a class="btn secondary" href="/databases/<%= db._id %>">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="max-width:640px">
+  <h3>Not editable here</h3>
+  <p class="help-text">
+    The <strong>connection URL</strong> is changed through <em>Rotate credentials</em> on the database
+    page — it re-checks that the new URL still points at <span class="mono"><%= db.dbName %></span>, so a
+    typo can't quietly repoint this registration and orphan its backups. <strong>Retention</strong> and the
+    <strong>test-restore target</strong> have their own forms there too.
+  </p>
+</div>
+<%- include('partials/foot') %>

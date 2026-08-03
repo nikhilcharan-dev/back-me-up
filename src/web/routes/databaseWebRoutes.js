@@ -9,6 +9,8 @@ import {
   setTestRestoreTarget,
   setRetentionPolicy,
   softDeleteDatabase,
+  updateDatabaseSettings,
+  DATABASE_TIERS,
 } from "../../services/databaseService.js";
 import { runBaseBackup } from "../../services/backupService.js";
 import { runRestore } from "../../services/restoreService.js";
@@ -57,7 +59,11 @@ async function loadDetail(request, reply, extra = {}) {
 
 export default async function databaseWebRoutes(app) {
   app.get("/databases/new", { preHandler: requireAuth }, async (request, reply) => {
-    return reply.view("database-new.ejs", { ...(await baseViewContext(request, reply)), title: "Add database" });
+    return reply.view("database-new.ejs", {
+      ...(await baseViewContext(request, reply)),
+      title: "Add database",
+      tiers: DATABASE_TIERS,
+    });
   });
 
   app.post("/databases", { preHandler: [requireAuth, app.csrfProtection] }, async (request, reply) => {
@@ -78,8 +84,10 @@ export default async function databaseWebRoutes(app) {
           request.log.error({ err: err.message }, "failed to auto-start capture");
         }
       }
-      if (body.scheduleCron) {
-        scheduleBaseBackups(created._id, body.scheduleCron);
+      // Schedule the normalized expression the record actually stored, not the raw
+      // form value.
+      if (created.scheduleCron) {
+        scheduleBaseBackups(created._id, created.scheduleCron);
       }
       setFlash(request, "success", `Database "${created.name}" registered.`);
       return reply.redirect(`/databases/${created._id}`);
@@ -96,6 +104,72 @@ export default async function databaseWebRoutes(app) {
       return reply.redirect("/");
     }
     return reply.view("database-detail.ejs", view);
+  });
+
+  app.get("/databases/:id/edit", { preHandler: requireAuth }, async (request, reply) => {
+    const dbRecord = await getRegisteredDatabase(request.params.id);
+    if (!dbRecord || dbRecord.deletedAt) {
+      setFlash(request, "error", "Database not found.");
+      return reply.redirect("/");
+    }
+    return reply.view("database-edit.ejs", {
+      ...(await baseViewContext(request, reply)),
+      title: `Edit ${dbRecord.name}`,
+      db: toPublicDatabase(dbRecord),
+      tiers: DATABASE_TIERS,
+    });
+  });
+
+  app.post("/databases/:id/edit", { preHandler: [requireAuth, app.csrfProtection] }, async (request, reply) => {
+    const body = request.body ?? {};
+    const before = await getRegisteredDatabase(request.params.id);
+    if (!before || before.deletedAt) {
+      setFlash(request, "error", "Database not found.");
+      return reply.redirect("/");
+    }
+
+    try {
+      const updated = await updateDatabaseSettings(request.params.id, {
+        name: body.name,
+        tier: body.tier || "unknown",
+        tags: parseTags(body.tags),
+        scheduleCron: body.scheduleCron,
+        pitrEnabled: body.pitrEnabled === "true",
+      });
+
+      // scheduleBaseBackups() replaces any existing job for this db, so applying
+      // the saved value unconditionally keeps cron in sync with the record.
+      if (updated.scheduleCron) {
+        scheduleBaseBackups(request.params.id, updated.scheduleCron);
+      } else {
+        unscheduleBaseBackups(request.params.id);
+      }
+
+      // Only react to an actual change, so saving unrelated edits never disturbs
+      // a running capture (and its resume token).
+      let flashType = "success";
+      let captureNote = "";
+      if (updated.pitrEnabled !== before.pitrEnabled) {
+        if (updated.pitrEnabled) {
+          try {
+            await startCapture(request.params.id);
+            captureNote = ". Continuous capture started.";
+          } catch (err) {
+            flashType = "error";
+            captureNote = ` — but continuous capture could not start: ${err.message}`;
+          }
+        } else {
+          await stopCapture(request.params.id);
+          captureNote = ". Continuous capture stopped.";
+        }
+      }
+
+      setFlash(request, flashType, `Saved changes to "${updated.name}"${captureNote || "."}`);
+      return reply.redirect(`/databases/${request.params.id}`);
+    } catch (err) {
+      setFlash(request, "error", err.message);
+      return reply.redirect(`/databases/${request.params.id}/edit`);
+    }
   });
 
   app.post(

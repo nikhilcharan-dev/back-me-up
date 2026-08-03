@@ -16,8 +16,9 @@ continuously captures every change, so you can restore a database to its exact s
 
 ## What it does
 
-- **Register** any number of Atlas databases by connection URL, with a name and tags —
-  through the admin UI or the JSON API.
+- **Register** any number of Atlas (or self-hosted) databases by connection URL, with a name
+  and tags — through the admin UI or the JSON API — and edit that metadata, the capture
+  toggle, and the backup schedule later from the database page.
 - **Base snapshots** on a schedule (in-process cron), downloadable as `.tar.gz`.
 - **Browse a snapshot without restoring it** — open a backup, open a collection, search its
   documents, and download that collection as JSON or as the raw `.bson.gz`.

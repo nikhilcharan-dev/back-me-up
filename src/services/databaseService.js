@@ -1,9 +1,38 @@
 import { MongoClient } from "mongodb";
+import cron from "node-cron";
 import { config } from "../config/env.js";
 import { encrypt } from "../lib/crypto.js";
 import { extractDbName } from "../lib/mongoUri.js";
 import { insertDatabase, listDatabases, findDatabaseById, updateDatabase } from "../repositories/databasesRepo.js";
 import { insertAuditEntry } from "../repositories/auditRepo.js";
+
+// Tier is informational metadata — nothing branches on it — but it's the fastest
+// way to see which registrations are on a shared Atlas tier, where change streams
+// are the only PITR mechanism available (docs/PITR-DESIGN.md §5). Self-hosted
+// deployments get their own value rather than being filed under "unknown".
+export const DATABASE_TIERS = [
+  { value: "unknown", label: "Unknown / not sure" },
+  { value: "M0", label: "M0 (Atlas free)" },
+  { value: "M2", label: "M2 (Atlas shared)" },
+  { value: "M5", label: "M5 (Atlas shared)" },
+  { value: "M10", label: "M10+ (Atlas dedicated)" },
+  { value: "self-hosted", label: "Self-hosted / on-prem" },
+];
+
+export function isKnownTier(tier) {
+  return DATABASE_TIERS.some((t) => t.value === tier);
+}
+
+// Blank means "no schedule"; anything else has to be a cron expression node-cron
+// will actually accept, otherwise the schedule is silently never registered.
+function normalizeCron(expr) {
+  const trimmed = (expr ?? "").toString().trim();
+  if (!trimmed) return null;
+  if (!cron.validate(trimmed)) {
+    throw new Error(`"${trimmed}" is not a valid cron expression (five or six fields, e.g. "0 * * * *").`);
+  }
+  return trimmed;
+}
 
 export async function testConnection(uri) {
   const client = new MongoClient(uri, { serverSelectionTimeoutMS: 8000 });
@@ -27,6 +56,7 @@ export async function registerDatabase({
   testRestoreCron = null,
 }) {
   const dbName = extractDbName(connectionUri);
+  const normalizedCron = normalizeCron(scheduleCron);
   await testConnection(connectionUri);
 
   if (testRestoreTargetUri) {
@@ -39,7 +69,7 @@ export async function registerDatabase({
     connectionUriEnc: encrypt(connectionUri, config.masterKey),
     tier,
     tags,
-    scheduleCron,
+    scheduleCron: normalizedCron,
     retention,
     pitrEnabled,
     testRestoreTargetUriEnc: testRestoreTargetUri ? encrypt(testRestoreTargetUri, config.masterKey) : null,
@@ -70,6 +100,53 @@ export async function listRegisteredDatabases() {
 // should use toPublicDatabase() before sending a response.
 export async function getRegisteredDatabase(id) {
   return findDatabaseById(id);
+}
+
+// Edits the metadata a registration can safely change after the fact. Deliberately
+// excludes the connection URL — that goes through rotateConnectionUri(), which
+// enforces that the new URL still points at the same database, since repointing a
+// registration would orphan the backup history already filed under it.
+export async function updateDatabaseSettings(dbId, { name, tier, tags, scheduleCron, pitrEnabled }) {
+  const dbRecord = await findDatabaseById(dbId);
+  if (!dbRecord) throw new Error(`No registered database with id ${dbId}`);
+  if (dbRecord.deletedAt) throw new Error(`Database ${dbId} has been unregistered`);
+
+  const trimmedName = (name ?? "").toString().trim();
+  if (!trimmedName) throw new Error("Name is required.");
+
+  const update = {
+    name: trimmedName,
+    tier: (tier ?? "").toString().trim() || "unknown",
+    tags: Array.isArray(tags) ? tags : [],
+    scheduleCron: normalizeCron(scheduleCron),
+    pitrEnabled: Boolean(pitrEnabled),
+    updatedAt: new Date(),
+  };
+
+  try {
+    await updateDatabase(dbId, update);
+  } catch (err) {
+    // registered_databases.name is uniquely indexed, and unregistering is a soft
+    // delete — so a "taken" name may belong to a database that's no longer listed.
+    if (err.code === 11000) {
+      throw new Error(`The name "${trimmedName}" is already taken by another registration.`);
+    }
+    throw err;
+  }
+
+  await insertAuditEntry({
+    actor: "api",
+    action: "update-database",
+    dbId: dbRecord._id,
+    detail: {
+      name: update.name,
+      tier: update.tier,
+      scheduleCron: update.scheduleCron,
+      pitrEnabled: update.pitrEnabled,
+      tags: update.tags,
+    },
+  });
+  return getRegisteredDatabase(dbId);
 }
 
 export async function rotateConnectionUri(dbId, newUri) {

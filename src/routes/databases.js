@@ -55,8 +55,8 @@ export default async function databaseRoutes(app) {
           request.log.error({ err: err.message, dbId: created._id }, "failed to auto-start capture");
         }
       }
-      if (scheduleCron) {
-        scheduleBaseBackups(created._id, scheduleCron);
+      if (created.scheduleCron) {
+        scheduleBaseBackups(created._id, created.scheduleCron);
       }
       if (testRestoreTargetUri) {
         scheduleTestRestores(created._id, testRestoreCron || config.testRestoreDefaultCron);

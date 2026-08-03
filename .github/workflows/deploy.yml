@@ -66,7 +66,7 @@ jobs:
 
             # Reload or start application with PM2
             if pm2 list | grep -q "back-me-up"; then
-              pm2 reload back-me-up
+              pm2 restart back-me-up
             else
               pm2 start src/server.js --name back-me-up
             fi

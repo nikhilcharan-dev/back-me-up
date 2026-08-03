@@ -25,14 +25,13 @@
     </div>
 
     <div class="form-row">
-      <label for="tier">Atlas tier</label>
+      <label for="tier">Tier</label>
       <select id="tier" name="tier">
-        <option value="unknown" selected>Unknown / not sure</option>
-        <option value="M0">M0 (free)</option>
-        <option value="M2">M2</option>
-        <option value="M5">M5</option>
-        <option value="M10">M10+ (dedicated)</option>
+        <% tiers.forEach(function(t) { %>
+          <option value="<%= t.value %>" <%= t.value === 'unknown' ? 'selected' : '' %>><%= t.label %></option>
+        <% }) %>
       </select>
+      <div class="hint">Informational only — it records which deployment this database lives on.</div>
     </div>
 
     <div class="form-row">
