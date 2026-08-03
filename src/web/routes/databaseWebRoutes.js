@@ -23,10 +23,21 @@ import {
   scheduleTestRestores,
   unscheduleTestRestores,
 } from "../../scheduler/schedulerManager.js";
+import { SCHEDULE_PRESETS, WEEKDAYS, parseSchedule, serverTimeZone } from "../schedulePresets.js";
 import { listBaseBackupsForDb } from "../../repositories/backupsRepo.js";
 import { listRestoreJobsForDb } from "../../repositories/restoresRepo.js";
 import { listTestRestoreRunsForDb } from "../../repositories/testRestoresRepo.js";
 import { config } from "../../config/env.js";
+
+// Locals the shared schedule-field partial needs, on both the add and edit forms.
+function scheduleFieldLocals(cronExpr) {
+  return {
+    presets: SCHEDULE_PRESETS,
+    weekdays: WEEKDAYS,
+    schedule: parseSchedule(cronExpr),
+    serverTimeZone: serverTimeZone(),
+  };
+}
 
 function parseTags(raw) {
   if (!raw) return [];
@@ -63,6 +74,7 @@ export default async function databaseWebRoutes(app) {
       ...(await baseViewContext(request, reply)),
       title: "Add database",
       tiers: DATABASE_TIERS,
+      ...scheduleFieldLocals(null),
     });
   });
 
@@ -117,6 +129,7 @@ export default async function databaseWebRoutes(app) {
       title: `Edit ${dbRecord.name}`,
       db: toPublicDatabase(dbRecord),
       tiers: DATABASE_TIERS,
+      ...scheduleFieldLocals(dbRecord.scheduleCron),
     });
   });
 

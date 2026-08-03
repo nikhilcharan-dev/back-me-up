@@ -39,11 +39,7 @@
       <div class="hint">Starts a change-stream worker immediately after saving. Required for point-in-time restore.</div>
     </div>
 
-    <div class="form-row">
-      <label for="scheduleCron">Base backup schedule (cron, optional)</label>
-      <input type="text" id="scheduleCron" name="scheduleCron" placeholder="0 * * * *  (hourly)" />
-      <div class="hint">Leave blank to only take backups manually from the database page.</div>
-    </div>
+    <%- include('partials/schedule-field', { presets, weekdays, schedule, serverTimeZone }) %>
 
     <button class="btn" type="submit">Add database</button>
   </form>

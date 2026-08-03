@@ -35,6 +35,67 @@ if (restoreForm) {
   });
 }
 
+// Schedule builder (partials/schedule-field.ejs): turns plain-language presets into
+// the cron expression the server stores, so scheduling a backup doesn't require
+// knowing cron syntax. Each <option> carries its own cron and description template
+// (src/web/schedulePresets.js owns the list); all this does is substitute the
+// {placeholders} from the time/weekday controls. The cron text input is the only
+// field that submits, so an expression the presets can't express — chosen via
+// "Custom" — round-trips untouched.
+document.querySelectorAll("[data-schedule-builder]").forEach((root) => {
+  const preset = root.querySelector("[data-schedule-preset]");
+  const cron = root.querySelector("[data-schedule-cron]");
+  if (!preset || !cron) return;
+
+  const timePart = root.querySelector("[data-schedule-when]");
+  const time = root.querySelector("[data-schedule-time]");
+  const dayPart = root.querySelector("[data-schedule-weekday]");
+  const day = root.querySelector("[data-schedule-weekday-select]");
+  const customPart = root.querySelector("[data-schedule-custom]");
+  const tzNote = root.querySelector("[data-schedule-tz]");
+  const summary = root.querySelector("[data-schedule-summary]");
+  const expr = root.querySelector("[data-schedule-expr]");
+
+  const fill = (template) => {
+    const at = time.value || "02:00";
+    const [hour, minute] = at.split(":").map(Number);
+    const values = {
+      minute,
+      hour,
+      time: at,
+      weekday: day.value,
+      weekdayName: day.selectedOptions[0].textContent,
+    };
+    return template.replace(/\{(\w+)\}/g, (match, key) => (key in values ? values[key] : match));
+  };
+
+  const sync = () => {
+    const option = preset.selectedOptions[0];
+    const showTime = option.dataset.needsTime === "true";
+
+    timePart.hidden = !showTime;
+    dayPart.hidden = option.dataset.needsWeekday !== "true";
+    customPart.hidden = option.dataset.hasCron === "true";
+    tzNote.hidden = !showTime;
+
+    const generated = option.dataset.hasCron === "true";
+    if (generated) cron.value = fill(option.dataset.cron);
+
+    // The only empty-handed state is "Custom" with nothing typed yet.
+    summary.textContent =
+      generated || cron.value.trim()
+        ? fill(option.dataset.description)
+        : "Enter a cron expression, or pick a preset above.";
+    expr.textContent = cron.value.trim();
+  };
+
+  preset.addEventListener("change", sync);
+  time.addEventListener("change", sync);
+  day.addEventListener("change", sync);
+  cron.addEventListener("input", sync);
+  sync();
+});
+
 // Backup browser: copy a rendered document's JSON (data-copy-from="<element id>").
 document.addEventListener("click", (e) => {
   const button = e.target.closest("[data-copy-from]");

@@ -1,0 +1,53 @@
+<%
+  // Renders the initial state server-side so the form opens on the right controls;
+  // app.js takes over from there, keeping the cron input (the only submitted field)
+  // in sync as the preset changes. Each option carries its own cron/description
+  // template, so the browser never needs its own copy of the preset list.
+  var current = presets.filter(function(p) { return p.value === schedule.preset; })[0] || {};
+  var showTime = Boolean(current.needsTime);
+  var showWeekday = Boolean(current.needsWeekday);
+  var showCustom = schedule.preset === 'custom';
+%>
+<div class="form-row" data-schedule-builder>
+  <label for="schedulePreset">Base backup schedule</label>
+
+  <div class="schedule-row">
+    <select id="schedulePreset" data-schedule-preset>
+      <% presets.forEach(function(p) { %>
+        <option value="<%= p.value %>"
+          data-has-cron="<%= p.cron === null ? 'false' : 'true' %>"
+          data-cron="<%= p.cron === null ? '' : p.cron %>"
+          data-description="<%= p.description %>"
+          data-needs-time="<%= p.needsTime ? 'true' : 'false' %>"
+          data-needs-weekday="<%= p.needsWeekday ? 'true' : 'false' %>"
+          <%= p.value === schedule.preset ? 'selected' : '' %>><%= p.label %></option>
+      <% }) %>
+    </select>
+
+    <span class="schedule-part" data-schedule-when <%= showTime ? '' : 'hidden' %>>
+      <label class="inline-label" for="scheduleTime">at</label>
+      <input type="time" id="scheduleTime" value="<%= schedule.time %>" data-schedule-time />
+    </span>
+
+    <span class="schedule-part" data-schedule-weekday <%= showWeekday ? '' : 'hidden' %>>
+      <label class="inline-label" for="scheduleWeekday">on</label>
+      <select id="scheduleWeekday" data-schedule-weekday-select>
+        <% weekdays.forEach(function(d) { %>
+          <option value="<%= d.value %>" <%= d.value === schedule.weekday ? 'selected' : '' %>><%= d.label %></option>
+        <% }) %>
+      </select>
+    </span>
+  </div>
+
+  <div style="margin-top:8px" data-schedule-custom <%= showCustom ? '' : 'hidden' %>>
+    <input type="text" id="scheduleCron" name="scheduleCron" value="<%= schedule.cron %>"
+      placeholder="0 * * * *" data-schedule-cron />
+    <div class="hint">Five fields: minute, hour, day-of-month, month, day-of-week.</div>
+  </div>
+
+  <div class="hint schedule-summary">
+    <span data-schedule-summary></span>
+    <span class="mono" data-schedule-expr></span>
+    <span data-schedule-tz <%= showTime ? '' : 'hidden' %>>Times are the server's local time (<%= serverTimeZone %>).</span>
+  </div>
+</div>
