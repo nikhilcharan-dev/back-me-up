@@ -40,6 +40,19 @@ export async function findNewestCompletedBaseBefore(dbId, cutoffDate) {
     .next();
 }
 
+// Aggregated across the whole history, unlike listBaseBackupsForDb — used for
+// dashboard totals, which need to survive a process restart. The in-memory
+// backmeup_base_backup_total Prometheus counter does not: it resets to zero on
+// every restart, while this reflects what's actually on disk/in the catalog.
+export async function countBaseBackupsByStatus(dbId) {
+  const db = getCatalogDb();
+  const rows = await db
+    .collection(COLLECTION)
+    .aggregate([{ $match: { dbId: new ObjectId(dbId) } }, { $group: { _id: "$status", count: { $sum: 1 } } }])
+    .toArray();
+  return Object.fromEntries(rows.map((r) => [r._id, r.count]));
+}
+
 export async function deleteBaseBackupRecord(id) {
   const db = getCatalogDb();
   await db.collection(COLLECTION).deleteOne({ _id: new ObjectId(id) });

@@ -1,10 +1,25 @@
 import { registry } from "../metrics/registry.js";
 import { listRegisteredDatabases } from "./databaseService.js";
+import { countBaseBackupsByStatus } from "../repositories/backupsRepo.js";
+import { countRestoreJobsByStatus } from "../repositories/restoresRepo.js";
+import { countTestRestoreRunsByResult } from "../repositories/testRestoresRepo.js";
+import { countAuditEntriesByAction } from "../repositories/auditRepo.js";
 
-// Everything here reads the same prom-client registry /metrics scrapes — this is
-// a second view onto it for humans, not a separate source of truth. Using
-// getMetricsAsJSON() instead of parsing the text exposition format keeps this
-// immune to prom-client's text formatting and avoids a second parser to maintain.
+// Live process/gauge stats (uptime, memory, capture lag, backup age, capture
+// running) come from the same prom-client registry /metrics exposes — a second
+// view onto it for humans. Using getMetricsAsJSON() instead of parsing the text
+// exposition format keeps this immune to prom-client's formatting.
+//
+// Totals (backups/restores/test-restores/continuity-breaks) deliberately do NOT
+// come from the matching backmeup_*_total Prometheus counters: those are
+// in-process Counters with no persistence, so they reset to zero on every
+// restart — a redeploy would make this page show "0 backups" for a database with
+// years of history still sitting in the catalog. Prometheus itself doesn't have
+// this problem (it scrapes continuously and PromQL's rate()/increase() are
+// built to handle counter resets), but a page that just reads the current value
+// once does. Totals here are instead aggregated straight from the catalog
+// collections that already back the database detail page, so the two pages
+// can't disagree about how many backups a database has.
 
 function metricMap(json) {
   const map = new Map();
@@ -16,25 +31,6 @@ function findValue(metric, labels) {
   if (!metric) return null;
   const entry = metric.values.find((v) => Object.entries(labels).every(([k, val]) => v.labels[k] === val));
   return entry ? entry.value : null;
-}
-
-// Sums a counter's values for one db_id, broken out by a second label (e.g.
-// status: completed/failed) — prom-client keeps one time series per label
-// combination, so "total completed backups for db X" is a sum, not a lookup.
-function sumByLabel(metric, dbId, labelName) {
-  const out = {};
-  if (!metric) return out;
-  for (const v of metric.values) {
-    if (v.labels.db_id !== dbId) continue;
-    const key = v.labels[labelName] ?? "unknown";
-    out[key] = (out[key] ?? 0) + v.value;
-  }
-  return out;
-}
-
-function sumAll(metric, dbId) {
-  if (!metric) return 0;
-  return metric.values.filter((v) => v.labels.db_id === dbId).reduce((total, v) => total + v.value, 0);
 }
 
 function buildProcessStats(metrics) {
@@ -61,6 +57,24 @@ function buildProcessStats(metrics) {
   };
 }
 
+async function loadDatabaseTotals(dbId) {
+  const [backups, restores, testRestores, continuityBreaks] = await Promise.all([
+    countBaseBackupsByStatus(dbId),
+    countRestoreJobsByStatus(dbId),
+    countTestRestoreRunsByResult(dbId),
+    countAuditEntriesByAction(dbId, "continuity-break-rebaseline"),
+  ]);
+  return {
+    backupsCompleted: backups.completed ?? 0,
+    backupsFailed: backups.failed ?? 0,
+    restoresCompleted: restores.completed ?? 0,
+    restoresFailed: restores.failed ?? 0,
+    testRestoresOk: testRestores.ok ?? 0,
+    testRestoresFailed: testRestores.failed ?? 0,
+    continuityBreaks,
+  };
+}
+
 export async function getDashboardMetrics() {
   const [json, databases] = await Promise.all([registry.getMetricsAsJSON(), listRegisteredDatabases()]);
   const metrics = metricMap(json);
@@ -68,35 +82,23 @@ export async function getDashboardMetrics() {
   const captureLag = metrics.get("backmeup_capture_lag_seconds");
   const captureRunningMetric = metrics.get("backmeup_capture_running");
   const baseBackupAge = metrics.get("backmeup_base_backup_age_seconds");
-  const baseBackupTotal = metrics.get("backmeup_base_backup_total");
-  const restoreTotal = metrics.get("backmeup_restore_total");
-  const continuityBreakTotal = metrics.get("backmeup_continuity_break_total");
-  const testRestoreTotal = metrics.get("backmeup_test_restore_total");
 
-  const perDatabase = databases.map((db) => {
-    const dbId = String(db._id);
-    const backups = sumByLabel(baseBackupTotal, dbId, "status");
-    const restores = sumByLabel(restoreTotal, dbId, "status");
-    const testRestores = sumByLabel(testRestoreTotal, dbId, "result");
-
-    return {
-      dbId,
-      name: db.name,
-      dbName: db.dbName,
-      captureStatus: db.captureStatus,
-      pitrEnabled: db.pitrEnabled,
-      captureLagSeconds: findValue(captureLag, { db_id: dbId }),
-      captureRunningNow: findValue(captureRunningMetric, { db_id: dbId }) === 1,
-      baseBackupAgeSeconds: findValue(baseBackupAge, { db_id: dbId }),
-      backupsCompleted: backups.completed ?? 0,
-      backupsFailed: backups.failed ?? 0,
-      restoresCompleted: restores.completed ?? 0,
-      restoresFailed: restores.failed ?? 0,
-      testRestoresOk: testRestores.ok ?? 0,
-      testRestoresFailed: testRestores.failed ?? 0,
-      continuityBreaks: sumAll(continuityBreakTotal, dbId),
-    };
-  });
+  const perDatabase = await Promise.all(
+    databases.map(async (db) => {
+      const dbId = String(db._id);
+      return {
+        dbId,
+        name: db.name,
+        dbName: db.dbName,
+        captureStatus: db.captureStatus,
+        pitrEnabled: db.pitrEnabled,
+        captureLagSeconds: findValue(captureLag, { db_id: dbId }),
+        captureRunningNow: findValue(captureRunningMetric, { db_id: dbId }) === 1,
+        baseBackupAgeSeconds: findValue(baseBackupAge, { db_id: dbId }),
+        ...(await loadDatabaseTotals(dbId)),
+      };
+    })
+  );
 
   const totals = perDatabase.reduce(
     (acc, row) => ({

@@ -28,3 +28,15 @@ export async function listRestoreJobsForDb(dbId, limit = 20) {
     .limit(limit)
     .toArray();
 }
+
+// Unbounded (unlike listRestoreJobsForDb's default 20) — dashboard totals need the
+// real historical count, and need it to survive a restart, which the equivalent
+// in-memory backmeup_restore_total Prometheus counter does not.
+export async function countRestoreJobsByStatus(dbId) {
+  const db = getCatalogDb();
+  const rows = await db
+    .collection(COLLECTION)
+    .aggregate([{ $match: { dbId: new ObjectId(dbId) } }, { $group: { _id: "$status", count: { $sum: 1 } } }])
+    .toArray();
+  return Object.fromEntries(rows.map((r) => [r._id, r.count]));
+}

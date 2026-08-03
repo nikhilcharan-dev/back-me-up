@@ -15,3 +15,13 @@ export async function listAuditEntries({ dbId, limit = 100 } = {}) {
   const filter = dbId ? { dbId: new ObjectId(dbId) } : {};
   return db.collection(COLLECTION).find(filter).sort({ at: -1 }).limit(limit).toArray();
 }
+
+// Continuity breaks have no dedicated collection — captureWorker.js records them
+// here (action: "continuity-break-rebaseline") and bumps the in-memory
+// backmeup_continuity_break_total counter alongside it. The audit log is the
+// durable half of that pair; the dashboard counts from here so a restart doesn't
+// make past breaks vanish from the total.
+export async function countAuditEntriesByAction(dbId, action) {
+  const db = getCatalogDb();
+  return db.collection(COLLECTION).countDocuments({ dbId: new ObjectId(dbId), action });
+}
