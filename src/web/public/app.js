@@ -96,6 +96,20 @@ document.querySelectorAll("[data-schedule-builder]").forEach((root) => {
   sync();
 });
 
+// Database page: toggle the Schedule stat between its plain-English reading
+// (default) and the raw cron expression it compiles to.
+document.querySelectorAll("[data-toggle-schedule-display]").forEach((button) => {
+  const stat = button.closest("[data-schedule-stat]");
+  const words = stat.querySelector("[data-schedule-words]");
+  const cronEl = stat.querySelector("[data-schedule-cron]");
+  button.addEventListener("click", () => {
+    const showCron = cronEl.hidden;
+    words.hidden = showCron;
+    cronEl.hidden = !showCron;
+    button.textContent = showCron ? "Show words" : "Show cron";
+  });
+});
+
 // Backup browser: copy a rendered document's JSON (data-copy-from="<element id>").
 document.addEventListener("click", (e) => {
   const button = e.target.closest("[data-copy-from]");

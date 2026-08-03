@@ -13,30 +13,35 @@ export const SCHEDULE_PRESETS = [
     label: "Manual only — no automatic backups",
     cron: "",
     description: "No automatic backups — you run them yourself from the database page.",
+    shortLabel: "Manual only",
   },
   {
     value: "hourly",
     label: "Every hour",
     cron: "0 * * * *",
     description: "Runs at the top of every hour.",
+    shortLabel: "Every hour",
   },
   {
     value: "every6",
     label: "Every 6 hours",
     cron: "0 */6 * * *",
     description: "Runs every 6 hours — 00:00, 06:00, 12:00 and 18:00.",
+    shortLabel: "Every 6 hours",
   },
   {
     value: "every12",
     label: "Every 12 hours",
     cron: "0 */12 * * *",
     description: "Runs every 12 hours — 00:00 and 12:00.",
+    shortLabel: "Every 12 hours",
   },
   {
     value: "daily",
     label: "Every day",
     cron: "{minute} {hour} * * *",
     description: "Runs every day at {time}.",
+    shortLabel: "Every day at {time}",
     needsTime: true,
   },
   {
@@ -44,6 +49,7 @@ export const SCHEDULE_PRESETS = [
     label: "Every week",
     cron: "{minute} {hour} * * {weekday}",
     description: "Runs every {weekdayName} at {time}.",
+    shortLabel: "Every {weekdayName} at {time}",
     needsTime: true,
     needsWeekday: true,
   },
@@ -53,6 +59,7 @@ export const SCHEDULE_PRESETS = [
     label: "Custom cron expression",
     cron: null,
     description: "Runs on this cron expression:",
+    shortLabel: null,
   },
 ];
 
@@ -110,6 +117,20 @@ export function parseSchedule(cronExpr) {
   }
 
   return base;
+}
+
+// Plain-English reading of a stored cron expression for display (the database page
+// shows this by default, with a toggle back to the raw expression). Recognized
+// presets get their short label filled in; anything else — a hand-written
+// expression the presets can't express — reads as "Custom schedule" rather than
+// guessing at a description for arbitrary cron syntax.
+export function describeCron(cronExpr) {
+  const parsed = parseSchedule(cronExpr);
+  if (parsed.preset === "custom") return "Custom schedule";
+
+  const preset = findPreset(parsed.preset);
+  const weekdayName = WEEKDAYS.find((d) => d.value === parsed.weekday)?.label ?? "";
+  return preset.shortLabel.replace("{time}", parsed.time).replace("{weekdayName}", weekdayName);
 }
 
 // node-cron fires in the process's local timezone, so a preset time means server

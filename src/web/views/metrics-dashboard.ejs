@@ -1,0 +1,90 @@
+<%- include('partials/head', { title: 'Metrics', username, publicIp, csrfToken, flash }) %>
+<div class="page-header">
+  <div>
+    <h1>Metrics</h1>
+    <div class="subtitle">A human-readable view of what Prometheus scrapes from <a href="/metrics">/metrics</a>.</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Process</h2>
+  <div class="stat-row">
+    <div class="stat"><div class="label">Uptime</div><div class="value" style="font-size:16px"><%= fmtDuration(process.uptimeSeconds) %></div></div>
+    <div class="stat"><div class="label">Memory (RSS)</div><div class="value" style="font-size:16px"><%= fmtBytes(process.residentMemoryBytes) %></div></div>
+    <div class="stat">
+      <div class="label">Heap</div>
+      <div class="value" style="font-size:16px">
+        <% if (process.heapUsedBytes !== null && process.heapTotalBytes !== null) { %>
+          <%= fmtBytes(process.heapUsedBytes) %> / <%= fmtBytes(process.heapTotalBytes) %>
+        <% } else { %>—<% } %>
+      </div>
+    </div>
+    <div class="stat"><div class="label">CPU time (total)</div><div class="value" style="font-size:16px"><%= process.cpuSeconds !== null ? process.cpuSeconds.toFixed(1) + 's' : '—' %></div></div>
+    <div class="stat"><div class="label">Event loop lag</div><div class="value" style="font-size:16px"><%= process.eventLoopLagMs !== null ? process.eventLoopLagMs.toFixed(1) + 'ms' : '—' %></div></div>
+    <div class="stat"><div class="label">Open file descriptors</div><div class="value" style="font-size:16px"><%= fmtNum(process.openFds) %></div></div>
+  </div>
+  <% if (process.nodeVersion) { %>
+    <p class="help-text" style="margin:10px 0 0">Node <%= process.nodeVersion %></p>
+  <% } %>
+</div>
+
+<div class="card">
+  <h2>Across all databases</h2>
+  <div class="stat-row">
+    <div class="stat"><div class="label">Backups</div><div class="value"><%= fmtNum(totals.backupsCompleted) %><% if (totals.backupsFailed) { %> <span class="badge failed"><%= totals.backupsFailed %> failed</span><% } %></div></div>
+    <div class="stat"><div class="label">Restores</div><div class="value"><%= fmtNum(totals.restoresCompleted) %><% if (totals.restoresFailed) { %> <span class="badge failed"><%= totals.restoresFailed %> failed</span><% } %></div></div>
+    <div class="stat"><div class="label">Test-restores</div><div class="value"><%= fmtNum(totals.testRestoresOk) %><% if (totals.testRestoresFailed) { %> <span class="badge failed"><%= totals.testRestoresFailed %> failed</span><% } %></div></div>
+    <div class="stat"><div class="label">Continuity breaks</div><div class="value"><%= fmtNum(totals.continuityBreaks) %></div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="section-toolbar">
+    <h2 style="margin:0">Per database</h2>
+  </div>
+  <% if (perDatabase.length === 0) { %>
+    <div class="empty-state">No databases registered yet.</div>
+  <% } else { %>
+    <table>
+      <thead>
+        <tr>
+          <th>Database</th>
+          <th>Capture</th>
+          <th>Capture lag</th>
+          <th>Last backup age</th>
+          <th>Backups</th>
+          <th>Restores</th>
+          <th>Test-restores</th>
+          <th>Continuity breaks</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% perDatabase.forEach(function(row) { %>
+          <tr>
+            <td><a href="/databases/<%= row.dbId %>"><%= row.name %></a></td>
+            <td>
+              <% if (row.pitrEnabled) { %>
+                <span class="badge <%= row.captureRunningNow ? 'ok' : 'failed' %>"><%= row.captureRunningNow ? 'running' : 'stopped' %></span>
+              <% } else { %>
+                <span class="badge neutral">not enabled</span>
+              <% } %>
+            </td>
+            <td><%= row.pitrEnabled ? fmtDuration(row.captureLagSeconds) : '—' %></td>
+            <td><%= fmtDuration(row.baseBackupAgeSeconds) %></td>
+            <td>
+              <%= fmtNum(row.backupsCompleted) %><% if (row.backupsFailed) { %> <span class="badge failed"><%= row.backupsFailed %></span><% } %>
+            </td>
+            <td>
+              <%= fmtNum(row.restoresCompleted) %><% if (row.restoresFailed) { %> <span class="badge failed"><%= row.restoresFailed %></span><% } %>
+            </td>
+            <td>
+              <%= fmtNum(row.testRestoresOk) %><% if (row.testRestoresFailed) { %> <span class="badge failed"><%= row.testRestoresFailed %></span><% } %>
+            </td>
+            <td><% if (row.continuityBreaks) { %><span class="badge failed"><%= row.continuityBreaks %></span><% } else { %>0<% } %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  <% } %>
+</div>
+<%- include('partials/foot') %>

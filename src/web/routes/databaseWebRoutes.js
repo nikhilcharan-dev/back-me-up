@@ -23,7 +23,7 @@ import {
   scheduleTestRestores,
   unscheduleTestRestores,
 } from "../../scheduler/schedulerManager.js";
-import { SCHEDULE_PRESETS, WEEKDAYS, parseSchedule, serverTimeZone } from "../schedulePresets.js";
+import { SCHEDULE_PRESETS, WEEKDAYS, parseSchedule, describeCron, serverTimeZone } from "../schedulePresets.js";
 import { listBaseBackupsForDb } from "../../repositories/backupsRepo.js";
 import { listRestoreJobsForDb } from "../../repositories/restoresRepo.js";
 import { listTestRestoreRunsForDb } from "../../repositories/testRestoresRepo.js";
@@ -60,6 +60,7 @@ async function loadDetail(request, reply, extra = {}) {
     ...(await baseViewContext(request, reply)),
     title: db.name,
     db,
+    scheduleWords: describeCron(db.scheduleCron),
     backups,
     restoreJobs,
     testRestoreRuns,

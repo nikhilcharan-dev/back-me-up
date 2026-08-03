@@ -24,7 +24,13 @@
       <div class="stat"><div class="label">Status</div><div class="value"><span class="badge <%= db.captureStatus %>"><%= db.captureStatus %></span></div></div>
       <div class="stat"><div class="label">Last captured</div><div class="value" style="font-size:13px"><%= db.lastCaptureTs ? new Date(db.lastCaptureTs.t * 1000).toLocaleString() : '—' %></div></div>
       <div class="stat"><div class="label">Last base backup</div><div class="value" style="font-size:13px"><%= db.lastBaseAt ? new Date(db.lastBaseAt).toLocaleString() : 'never' %></div></div>
-      <div class="stat"><div class="label">Schedule</div><div class="value mono" style="font-size:13px"><%= db.scheduleCron || 'manual only' %></div></div>
+      <div class="stat" data-schedule-stat>
+        <div class="label">Schedule</div>
+        <div class="value" style="font-size:13px">
+          <span data-schedule-words><%= scheduleWords %></span><span class="mono" data-schedule-cron hidden><%= db.scheduleCron %></span>
+          <% if (db.scheduleCron) { %><button type="button" class="link-btn" data-toggle-schedule-display>Show cron</button><% } %>
+        </div>
+      </div>
     </div>
     <div class="actions" style="margin-top:10px">
       <% if (captureRunning) { %>

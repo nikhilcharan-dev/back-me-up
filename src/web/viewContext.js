@@ -1,6 +1,6 @@
 import { getPublicIp } from "../lib/publicIp.js";
 import { popFlash } from "./flash.js";
-import { formatBytes, formatNumber } from "./format.js";
+import { formatBytes, formatNumber, formatDuration } from "./format.js";
 
 // Common locals every authenticated page template needs: who's logged in, the
 // navbar's IP-whitelist badge, any pending flash message, a CSRF token for that
@@ -15,5 +15,6 @@ export async function baseViewContext(request, reply) {
     csrfToken: reply.generateCsrf(),
     fmtBytes: formatBytes,
     fmtNum: formatNumber,
+    fmtDuration: formatDuration,
   };
 }
