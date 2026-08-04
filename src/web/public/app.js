@@ -207,7 +207,7 @@ if (window.__restoreId && !window.__restoreDone) {
     if (statusEl) statusEl.innerHTML = `<span class="badge ${job.status}">${job.status}</span>`;
     if (resultEl && (job.status === "completed" || job.status === "failed")) {
       const v = job.verification || {};
-      const infoIcon = (text) => `<svg class="info-icon" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" title="${text}" aria-label="${text}" tabindex="0" role="img"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.5" x2="8" y2="11.5"></line><line x1="8" y1="4.5" x2="8.01" y2="4.5"></line></svg>`;
+      const infoIcon = (text) => `<span class="info-icon" title="${text}" tabindex="0" aria-label="${text}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><line x1="8" y1="7.5" x2="8" y2="11.5"></line><line x1="8" y1="4.5" x2="8.01" y2="4.5"></line></svg></span>`;
       resultEl.innerHTML = `
         <h3>Verification${infoIcon("Document/row counts in the restored target, compared against what capture and the base backup expected to find there.")}</h3>
         <p>${v.ok ? "Counts match expected." : "Counts diverged from expected — inspect before trusting this restore."}</p>

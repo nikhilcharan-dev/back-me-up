@@ -84,12 +84,13 @@ a:hover { text-decoration: underline; }
 .card h2 { font-size: 15px; margin: 0 0 14px; }
 .card h3 { font-size: 13px; margin: 0 0 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
-/* Hover/focus explainer icon next to headings/labels — SVG circle with info i */
+/* Hover/focus explainer icon next to headings/labels */
 .info-icon {
-  display: inline-block; color: var(--text-muted); cursor: help;
-  margin-left: 5px; vertical-align: middle; width: 14px; height: 14px;
-  flex-shrink: 0; transition: color 0.15s ease;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted); cursor: pointer; margin-left: 5px;
+  vertical-align: middle; transition: color 0.15s ease;
 }
+.info-icon svg { width: 14px; height: 14px; pointer-events: none; }
 .info-icon:hover, .info-icon:focus { color: var(--primary); outline: none; }
 
 .grid { display: grid; gap: 20px; }
