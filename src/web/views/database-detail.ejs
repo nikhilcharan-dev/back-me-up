@@ -22,8 +22,8 @@
     <h2>Capture<%- include('partials/info-icon', { text: 'Continuously streams every write to this database (via a MongoDB change stream) so point-in-time restore has near-zero data loss. Stopping it pauses PITR until you start it again.' }) %></h2>
     <div class="stat-row">
       <div class="stat"><div class="label">Status</div><div class="value"><span class="badge <%= db.captureStatus %>"><%= db.captureStatus %></span></div></div>
-      <div class="stat"><div class="label">Last captured</div><div class="value" style="font-size:13px"><%= db.lastCaptureTs ? new Date(db.lastCaptureTs.t * 1000).toLocaleString() : '—' %></div></div>
-      <div class="stat"><div class="label">Last base backup</div><div class="value" style="font-size:13px"><%= db.lastBaseAt ? new Date(db.lastBaseAt).toLocaleString() : 'never' %></div></div>
+      <div class="stat"><div class="label">Last captured</div><div class="value" style="font-size:13px"><%- fmtTime(db.lastCaptureTs ? new Date(db.lastCaptureTs.t * 1000) : null) %></div></div>
+      <div class="stat"><div class="label">Last base backup</div><div class="value" style="font-size:13px"><%- fmtTime(db.lastBaseAt, 'never') %></div></div>
       <div class="stat" data-schedule-stat>
         <div class="label">Schedule</div>
         <div class="value" style="font-size:13px">
@@ -79,7 +79,7 @@
         <div class="hint">
           <% var completedBackups = allBackups.filter(function(b){ return b.status === 'completed'; }); %>
           <% if (completedBackups.length) { %>
-            Earliest available: <%= new Date(completedBackups[completedBackups.length-1].startedAt).toLocaleString() %>
+            Earliest available: <%- fmtTime(completedBackups[completedBackups.length-1].startedAt) %>
           <% } else { %>
             No completed backups yet — run one first.
           <% } %>
@@ -90,7 +90,8 @@
         <label for="baseBackupId">Backup snapshot</label>
         <select id="baseBackupId" name="baseBackupId">
           <% completedBackups.forEach(function(b) { %>
-            <option value="<%= b._id %>"><%= new Date(b.finishedAt).toLocaleString() %> (<%= b.collections.length %> collections)</option>
+            <% var isoStr = new Date(b.finishedAt).toISOString(); %>
+            <option value="<%= b._id %>" data-time="<%= isoStr %>" data-suffix=" (<%= b.collections.length %> collections)"><%= new Date(b.finishedAt).toISOString().replace('T', ' ').replace(/\..+$/, ' UTC') %> (<%= b.collections.length %> collections)</option>
           <% }) %>
         </select>
       </div>
@@ -119,7 +120,7 @@
       <tbody>
         <% backups.forEach(function(b) { %>
           <tr>
-            <td><%= new Date(b.startedAt).toLocaleString() %></td>
+            <td><%- fmtTime(b.startedAt) %></td>
             <td><span class="badge <%= b.status %>"><%= b.status %></span></td>
             <td><%= fmtBytes(b.sizeBytes) %></td>
             <td><%= b.collections ? b.collections.length : 0 %></td>
@@ -159,8 +160,8 @@
       <tbody>
         <% restoreJobs.forEach(function(r) { %>
           <tr>
-            <td><%= new Date(r.createdAt).toLocaleString() %></td>
-            <td><%= r.targetTimestamp ? new Date(r.targetTimestamp).toLocaleString() : '—' %></td>
+            <td><%- fmtTime(r.createdAt) %></td>
+            <td><%- fmtTime(r.targetTimestamp) %></td>
             <td><span class="badge <%= r.status %>"><%= r.status %></span></td>
             <td><a href="/restores/<%= r._id %>">View</a></td>
           </tr>
@@ -311,7 +312,7 @@
         <tbody>
           <% testRestoreRuns.forEach(function(r) { %>
             <tr>
-              <td><%= new Date(r.ranAt).toLocaleString() %></td>
+              <td><%- fmtTime(r.ranAt) %></td>
               <td><span class="badge <%= r.ok ? 'ok' : 'failed' %>"><%= r.ok ? 'OK' : (r.error || 'FAILED') %></span></td>
             </tr>
           <% }) %>

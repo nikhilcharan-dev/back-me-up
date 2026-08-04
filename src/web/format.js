@@ -43,3 +43,15 @@ export function formatDuration(seconds) {
   }
   return parts.join(" ");
 }
+
+// Renders a UTC date as a <time> element whose data-utc attribute holds the ISO
+// string. Client-side app.js reformats this in the *browser's* timezone so the
+// user sees their local time rather than the server's (UTC). The fallback text
+// is the UTC string so the page is readable even without JS.
+export function formatTime(dateOrIso, fallback = "—") {
+  if (!dateOrIso) return fallback;
+  const d = dateOrIso instanceof Date ? dateOrIso : new Date(dateOrIso);
+  if (isNaN(d.getTime())) return fallback;
+  const iso = d.toISOString();
+  return `<time data-utc="${iso}">${iso.replace("T", " ").replace(/\.\d+Z$/, " UTC")}</time>`;
+}

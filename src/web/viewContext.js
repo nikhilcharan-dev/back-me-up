@@ -1,6 +1,6 @@
 import { getPublicIp } from "../lib/publicIp.js";
 import { popFlash } from "./flash.js";
-import { formatBytes, formatNumber, formatDuration } from "./format.js";
+import { formatBytes, formatNumber, formatDuration, formatTime } from "./format.js";
 import { serverTimeZone } from "./schedulePresets.js";
 
 // Common locals every authenticated page template needs: who's logged in, the
@@ -19,6 +19,7 @@ export async function baseViewContext(request, reply) {
     fmtBytes: formatBytes,
     fmtNum: formatNumber,
     fmtDuration: formatDuration,
+    fmtTime: formatTime,
     serverEpochMs: Date.now(),
     serverTimeZone: serverTimeZone(),
   };

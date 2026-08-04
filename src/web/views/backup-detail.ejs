@@ -4,7 +4,7 @@
   <div>
     <h1>Backup snapshot</h1>
     <div class="subtitle">
-      <%= backup.dbName %> &middot; taken <%= new Date(backup.startedAt).toLocaleString() %>
+      <%= backup.dbName %> &middot; taken <%- fmtTime(backup.startedAt) %>
     </div>
   </div>
   <div class="actions">
@@ -21,7 +21,7 @@
     <div class="stat"><div class="label">Size</div><div class="value"><%= fmtBytes(backup.sizeBytes) %></div></div>
     <div class="stat">
       <div class="label">Finished</div>
-      <div class="value" style="font-size:13px"><%= backup.finishedAt ? new Date(backup.finishedAt).toLocaleString() : '—' %></div>
+      <div class="value" style="font-size:13px"><%- fmtTime(backup.finishedAt) %></div>
     </div>
   </div>
   <% if (backup.error) { %>

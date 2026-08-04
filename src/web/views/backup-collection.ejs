@@ -10,7 +10,7 @@
   <div>
     <h1 class="mono" style="font-size:20px"><%= collection.name %></h1>
     <div class="subtitle">
-      <%= backup.dbName %> &middot; snapshot of <%= new Date(backup.startedAt).toLocaleString() %>
+      <%= backup.dbName %> &middot; snapshot of <%- fmtTime(backup.startedAt) %>
       &middot; <%= fmtBytes(fileSizeBytes) %> on disk
     </div>
   </div>

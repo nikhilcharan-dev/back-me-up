@@ -5,7 +5,7 @@
 <div class="card">
   <div class="stat-row">
     <div class="stat"><div class="label">Status</div><div class="value" id="restore-status"><span class="badge <%= job.status %>"><%= job.status %></span></div></div>
-    <div class="stat"><div class="label">Target time</div><div class="value" style="font-size:13px"><%= job.targetTimestamp ? new Date(job.targetTimestamp).toLocaleString() : '—' %></div></div>
+    <div class="stat"><div class="label">Target time</div><div class="value" style="font-size:13px"><%- fmtTime(job.targetTimestamp) %></div></div>
     <div class="stat"><div class="label">Mode</div><div class="value" style="font-size:13px"><%= job.mode %></div></div>
   </div>
 </div>

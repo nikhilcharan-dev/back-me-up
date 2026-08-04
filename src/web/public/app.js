@@ -1,3 +1,24 @@
+// Format all UTC timestamps in the user's local timezone. Server-side EJS renders
+// dates as <time data-utc="ISO-string">ISO-string</time> so the raw UTC is visible
+// immediately (no flash of empty); this replaces the content with a locale-aware
+// format using the *browser's* timezone instead of the server's (UTC).
+document.querySelectorAll("time[data-utc]").forEach((el) => {
+  const iso = el.getAttribute("data-utc");
+  if (!iso) return;
+  const d = new Date(iso);
+  if (isNaN(d)) return;
+  el.textContent = d.toLocaleString();
+});
+
+document.querySelectorAll("option[data-time]").forEach((el) => {
+  const iso = el.getAttribute("data-time");
+  if (!iso) return;
+  const d = new Date(iso);
+  if (isNaN(d)) return;
+  const suffix = el.getAttribute("data-suffix") || "";
+  el.textContent = d.toLocaleString() + suffix;
+});
+
 // Confirm before destructive form submissions (data-confirm="...")
 document.addEventListener("submit", (e) => {
   const form = e.target;
