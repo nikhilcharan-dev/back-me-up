@@ -32,6 +32,11 @@
         </div>
       </div>
     </div>
+    <% if (db.captureLastError && db.captureStatus !== 'running') { %>
+      <p class="help-text" style="color:var(--danger); margin-top:10px">
+        Last capture failure: <%= db.captureLastError %>
+      </p>
+    <% } %>
     <div class="actions" style="margin-top:10px">
       <% if (captureRunning) { %>
         <form method="post" action="/databases/<%= db._id %>/capture/stop">

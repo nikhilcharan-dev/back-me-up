@@ -107,6 +107,7 @@ export default async function databaseRoutes(app) {
     return {
       captureStatus: doc.captureStatus,
       lastCaptureTs: doc.lastCaptureTs ?? null,
+      lastError: doc.captureLastError ?? null,
       running: isCaptureRunning(request.params.id),
     };
   });

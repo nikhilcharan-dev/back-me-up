@@ -5,6 +5,7 @@ import { toPlainClusterTime } from "../lib/clusterTime.js";
 import { findDatabaseById, updateDatabase } from "../repositories/databasesRepo.js";
 import { insertChangeSlice } from "../repositories/changeSlicesRepo.js";
 import { writeSlice } from "./sliceWriter.js";
+import { insertAuditEntry } from "../repositories/auditRepo.js";
 import { continuityBreakTotal } from "../metrics/registry.js";
 
 const FLUSH_INTERVAL_MS = 5000;
@@ -63,7 +64,10 @@ export class CaptureWorker {
     // An open cursor guarantees no subsequent write is missed, even before the
     // first event is consumed (resumeToken is null until then) — this is what
     // base backups rely on for the capture-before-dump invariant (PITR-DESIGN §2).
-    await updateDatabase(this.dbId, { captureStatus: "running", updatedAt: new Date() });
+    // captureLastError is cleared here too: a fresh start that gets this far has
+    // cleared whatever previously killed the stream, so a stale message shouldn't
+    // keep showing on the database page.
+    await updateDatabase(this.dbId, { captureStatus: "running", captureLastError: null, updatedAt: new Date() });
 
     this.changeStream.on("change", (event) => this.handleEvent(event));
     this.changeStream.on("error", (err) => {
@@ -142,7 +146,16 @@ export class CaptureWorker {
 
     if (broken) {
       continuityBreakTotal.inc({ db_id: this.dbId });
-      await updateDatabase(this.dbId, { captureStatus: "continuity_break", updatedAt: new Date() });
+      // The server has already declared this resume point invalid, so clearing
+      // it here is what lets the retry below (or a later manual "Start capture")
+      // open a clean change stream instead of resuming from the same token and
+      // hitting ChangeStreamHistoryLost again immediately.
+      await updateDatabase(this.dbId, {
+        captureStatus: "continuity_break",
+        captureLastError: err.message,
+        resumeTokenRef: null,
+        updatedAt: new Date(),
+      });
       console.error(
         `[ALERT] Capture continuity break for db ${this.dbId} — resume token expired, capture cannot resume without a new base backup.`
       );
@@ -150,7 +163,17 @@ export class CaptureWorker {
         await this.onContinuityBreak(this.dbId);
       }
     } else {
-      await updateDatabase(this.dbId, { captureStatus: "stopped", updatedAt: new Date() });
+      await updateDatabase(this.dbId, { captureStatus: "stopped", captureLastError: err.message, updatedAt: new Date() });
+      // Unlike the continuity-break path (whose onContinuityBreak callback always
+      // audits its own outcome), a plain stream error had no audit trail at all
+      // before this — it just went silent in captureStatus with nothing to show
+      // for it short of server console logs.
+      await insertAuditEntry({
+        actor: "system",
+        action: "capture-error",
+        dbId: this.dbId,
+        detail: { error: err.message, code: err.code ?? null, codeName: err.codeName ?? null },
+      }).catch(() => {});
     }
   }
 
