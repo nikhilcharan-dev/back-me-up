@@ -177,9 +177,9 @@
       <div>
         <h2>
           Retention Policy
-          <%- include('partials/info-icon', { text: 'Keeps the newest backup per hour/day/week bucket, going back this many buckets (grandfather-father-son). The single newest backup is always kept. Everything else is deleted when retention runs.' }) %>
+          <%- include('partials/info-icon', { text: 'Each field is a max age. Every backup finished inside the window is kept; anything older is deleted when retention runs. The three windows combine into the longest one, and the single newest backup is always kept.' }) %>
         </h2>
-        <span class="retention-subtitle">Grandfather-Father-Son rotation policy</span>
+        <span class="retention-subtitle">Age-based retention window</span>
       </div>
       <% if (db.retention) { %>
         <span class="badge neutral retention-status-badge">Active</span>
@@ -191,6 +191,7 @@
     <% if (db.retention) { %>
       <div class="retention-impact-banner" data-retention-current-impact>
         <div class="impact-details">
+          Keeping everything newer than <strong><%= retentionPreview.windowLabel %></strong>.
           Running retention now would remove <strong><%= retentionPreview.prunedBases %></strong> of <%= retentionPreview.totalBases %> backup(s) and <strong><%= retentionPreview.prunedSlices %></strong> change slice(s), keeping <%= retentionPreview.keptBases %>.
         </div>
       </div>
@@ -260,6 +261,11 @@
           <span class="field-hint">Weeks to keep</span>
         </div>
       </div>
+
+      <span class="help-text retention-window-note">
+        These are three max-age windows, not tiers &mdash; they don't stack. A backup is kept if
+        it falls inside any of them, so the longest value is the one that decides.
+      </span>
 
       <div class="retention-actions-bar">
         <button class="btn secondary small" type="submit">Save policy</button>

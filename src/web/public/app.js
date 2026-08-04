@@ -181,10 +181,11 @@ document.querySelectorAll("[data-retention-preview-btn]").forEach((button) => {
           resultEl.textContent = data.error || "Could not compute preview.";
           return;
         }
+        const window = `Window: ${data.windowLabel}.`;
         resultEl.textContent =
           data.prunedBases === 0 && data.prunedSlices === 0
-            ? "This policy would not remove anything right now."
-            : `Would remove ${data.prunedBases} of ${data.totalBases} backup(s) and ${data.prunedSlices} change slice(s), keeping ${data.keptBases}.`;
+            ? `${window} This policy would not remove anything right now.`
+            : `${window} Would remove ${data.prunedBases} of ${data.totalBases} backup(s) and ${data.prunedSlices} change slice(s), keeping ${data.keptBases}.`;
       })
       .catch(() => {
         resultEl.textContent = "Could not compute preview.";

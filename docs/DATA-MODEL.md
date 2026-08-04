@@ -13,7 +13,7 @@
   "connectionUriEnc": "<base64 AES-256-GCM: iv|tag|ciphertext>",
   "tier": "M0",                      // M0|M2|M5|M10+  (detected on register)
   "scheduleCron": "0 * * * *",       // base-dump cadence (bounds replay length / RTO)
-  "retention": { "hourly": 24, "daily": 30, "weekly": 12 },  // GFS
+  "retention": { "hourly": 24, "daily": 30, "weekly": 12 },  // max-age windows; longest wins
   "pitrEnabled": true,
   "captureStatus": "running|stopped|continuity_break",
   "lastBaseAt": "ISODate",

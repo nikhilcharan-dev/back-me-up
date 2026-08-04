@@ -353,6 +353,12 @@ input:focus, select:focus { outline: 2px solid var(--primary); outline-offset: 1
   color: var(--text-muted);
 }
 
+.retention-window-note {
+  display: block;
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
 .retention-actions-bar {
   display: flex;
   gap: 10px;

@@ -23,10 +23,15 @@ frequency handles RTO. They are independent knobs.
 - Support a **dry-run / restore-to-scratch** so users can validate a timestamp before
   committing.
 
-## Retention (GFS)
+## Retention (age window)
 
-Grandfather-father-son, per DB, configurable:
-- Hourly bases kept 24h → daily 30d → weekly 12w (defaults; override per DB).
+A max-age window per DB, configurable:
+- Three fields — `hourly` / `daily` / `weekly` — each a max age in its own unit. Every
+  completed base finished inside a window is kept; anything older is deleted. The three
+  windows are unioned, so **the longest value is the one that decides** (`24/30/4` is a
+  30-day window; the other two fields do nothing). Defaults `24/30/12` → 84 days.
+- **The single newest completed base is always kept**, whatever the policy says — retention
+  must never leave a DB with zero recovery points.
 - **Never delete a change slice newer than the oldest retained base** — doing so would
   punch a hole in the replay range. Prune slices only once every base that could need them
   is gone.

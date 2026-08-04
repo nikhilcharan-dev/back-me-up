@@ -29,7 +29,7 @@ Prove the core pipeline end-to-end on one DB, manual trigger.
 
 ## Phase 3 — Automation & scale  ✅ done
 - Scheduler (`node-cron`, in-process — see D11) for base cadence per DB.
-- GFS retention + slice-safety pruning rules (`retentionService.js`).
+- Age-window retention + slice-safety pruning rules (`retentionService.js`).
 - Multi-DB onboarding; per-DB isolation (capture/scheduler keyed by dbId).
 - Soft-delete lifecycle (D13) so unregistering a DB stops its background activity.
 - **Exit criteria:** many DBs run unattended with correct retention.

@@ -25,7 +25,7 @@ continuously captures every change, so you can restore a database to its exact s
 - **Continuous capture** of every insert/update/delete via Change Streams (near-zero RPO).
 - **Restore to a timestamp** — pick the newest base ≤ T, restore it, then replay captured
   changes up to exactly T, into a **new** target (never over the live DB by default).
-- **GFS retention**, scheduled **test-restores**, Prometheus **metrics**, an **audit log**,
+- **Age-window retention**, scheduled **test-restores**, Prometheus **metrics**, an **audit log**,
   and credential **rotation**.
 
 ## Status

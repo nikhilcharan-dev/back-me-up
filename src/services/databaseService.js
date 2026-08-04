@@ -23,10 +23,10 @@ export function isKnownTier(tier) {
   return DATABASE_TIERS.some((t) => t.value === tier);
 }
 
-// Counts, not days: "keep the newest backup per hour/day/week bucket, going
-// back this many buckets" (see retentionService.computeGfsKeepSet). Bounded
-// well above any realistic policy so a typo doesn't silently create an
-// effectively-unlimited retention window.
+// Max-age windows, each in its own unit: "keep every backup finished within the
+// last N hours / days / weeks" (see retentionService.computeRetentionKeepSet).
+// The longest of the three wins. Bounded well above any realistic policy so a
+// typo doesn't silently create an effectively-unlimited retention window.
 export const RETENTION_MAX = 1000;
 const RETENTION_FIELDS = ["hourly", "daily", "weekly"];
 
