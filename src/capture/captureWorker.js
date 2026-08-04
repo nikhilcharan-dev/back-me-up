@@ -227,10 +227,19 @@ export class CaptureWorker {
     }
 
     if (this.changeStream) {
-      try {
-        await this.changeStream.close();
-      } catch {
-        // already closed
+      // Calling close() on a stream that's already closed itself (e.g. we got
+      // here from the stream's own "close" event) can race the driver's
+      // internal cleanup and throw "ChangeStream is closed" from deep inside
+      // its readable-stream plumbing — outside this try/catch, since it
+      // surfaces asynchronously via the stream's own "error" event rather
+      // than as a rejection of this call. .closed is a real getter the driver
+      // exposes for exactly this check.
+      if (!this.changeStream.closed) {
+        try {
+          await this.changeStream.close();
+        } catch {
+          // already closed
+        }
       }
       this.changeStream = null;
     }
