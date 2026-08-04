@@ -33,9 +33,10 @@
       </div>
     </div>
     <% if (db.captureLastError && db.captureStatus !== 'running') { %>
-      <p class="help-text" style="color:var(--danger); margin-top:10px">
-        Last capture failure: <%= db.captureLastError %>
-      </p>
+      <div class="help-text" style="margin-top:10px">
+        <div style="color:var(--danger); font-weight:600; margin-bottom:4px">Last capture failure</div>
+        <pre class="mono" style="white-space:pre-wrap; margin:0; color:var(--danger)"><%= db.captureLastError %></pre>
+      </div>
     <% } %>
     <div class="actions" style="margin-top:10px">
       <% if (captureRunning) { %>

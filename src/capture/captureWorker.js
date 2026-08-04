@@ -139,8 +139,13 @@ export class CaptureWorker {
   }
 
   async handleError(err) {
-    console.error(`[capture:${this.dbId}] change stream error:`, err.message);
+    console.error(`[capture:${this.dbId}] change stream error:`, err.stack || err.message);
     const broken = isContinuityBreak(err);
+    // First few stack frames, not just the message — a bare message like
+    // "Cannot read properties of undefined (reading 'db')" is meaningless
+    // without knowing which line threw it, and the DB record is currently the
+    // only place this ever surfaces (no server-log access on this deployment).
+    const errorDetail = (err.stack || err.message || String(err)).split("\n").slice(0, 6).join("\n");
 
     await this.stopInternal();
 
@@ -152,7 +157,7 @@ export class CaptureWorker {
       // hitting ChangeStreamHistoryLost again immediately.
       await updateDatabase(this.dbId, {
         captureStatus: "continuity_break",
-        captureLastError: err.message,
+        captureLastError: errorDetail,
         resumeTokenRef: null,
         updatedAt: new Date(),
       });
@@ -163,7 +168,7 @@ export class CaptureWorker {
         await this.onContinuityBreak(this.dbId);
       }
     } else {
-      await updateDatabase(this.dbId, { captureStatus: "stopped", captureLastError: err.message, updatedAt: new Date() });
+      await updateDatabase(this.dbId, { captureStatus: "stopped", captureLastError: errorDetail, updatedAt: new Date() });
       // Unlike the continuity-break path (whose onContinuityBreak callback always
       // audits its own outcome), a plain stream error had no audit trail at all
       // before this — it just went silent in captureStatus with nothing to show
