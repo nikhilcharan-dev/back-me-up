@@ -68,21 +68,26 @@ export class CaptureWorker {
 
     // If the persisted resume token came from an invalidating event (e.g. the
     // watched database was dropped), resumeAfter will fail immediately — the
-    // cursor was already dead at that oplog point. Instead of opening a fully
-    // fresh stream (which loses every event since capture died), try
-    // startAtOperationTime with the last captured cluster timestamp — this
-    // reads the oplog from that exact point, recovering the gap if the oplog
-    // still has it. Only falls back to a fully fresh stream if even that fails.
+    // cursor was already dead at that oplog point.
+    //
+    // Crucially, lastCaptureTs IS the timestamp of the invalidating event
+    // itself, so startAtOperationTime would just replay the dropDatabase →
+    // invalidate sequence and the driver would close the cursor right back.
+    // Clear both the token and the fallback timestamp so _openChangeStream
+    // opens a completely fresh stream. The database was dropped — there's
+    // nothing useful to replay.
     let useResumeToken = dbRecord.resumeTokenRef;
+    let useLastCaptureTs = dbRecord.lastCaptureTs;
     if (useResumeToken && isInvalidatingResumeToken(useResumeToken)) {
       console.warn(
-        `[capture:${this.dbId}] resume token points to an invalidating event (dropDatabase/invalidate) — will try startAtOperationTime instead`
+        `[capture:${this.dbId}] resume token points to an invalidating event (dropDatabase/invalidate) — opening fresh stream`
       );
       useResumeToken = null;
+      useLastCaptureTs = null;
       await updateDatabase(this.dbId, { resumeTokenRef: null, updatedAt: new Date() });
     }
 
-    this.changeStream = await this._openChangeStream(sourceDb, useResumeToken, dbRecord.lastCaptureTs);
+    this.changeStream = await this._openChangeStream(sourceDb, useResumeToken, useLastCaptureTs);
   }
 
   // Opens the change stream, probing the cursor to fail-fast on bad tokens.
@@ -155,16 +160,19 @@ export class CaptureWorker {
     });
     this.changeStream.on("close", () => {
       // A cursor can close on its own (idle connection reaped by the server,
-      // network drop) without ever emitting "error" first. This used to only
-      // update captureStatus and leave `this.stopped` false — so the worker
-      // stayed "running" in captureManager's map forever: isRunning() kept
-      // returning true, isCaptureRunning() agreed, and a later "Start capture"
-      // just handed back this same dead worker instead of opening a fresh
-      // stream. stopInternal() also clears the flush timer and closes the
-      // MongoClient, which this leaked before too.
+      // network drop, or an invalidate event from dropDatabase) without ever
+      // emitting "error" first. stopInternal() tears down the worker so
+      // captureManager doesn't hand back a dead worker on the next "Start".
       if (this.stopped) return;
+      console.warn(`[capture:${this.dbId}] change stream closed unexpectedly (no error event)`);
       this.stopInternal()
-        .then(() => updateDatabase(this.dbId, { captureStatus: "stopped", updatedAt: new Date() }))
+        .then(() =>
+          updateDatabase(this.dbId, {
+            captureStatus: "stopped",
+            captureLastError: "Change stream closed unexpectedly (server may have reaped the cursor, or a dropDatabase/invalidate event was received)",
+            updatedAt: new Date(),
+          })
+        )
         .catch((e) => console.error(`[capture:${this.dbId}] close cleanup failed:`, e.message));
     });
 
@@ -175,28 +183,44 @@ export class CaptureWorker {
     return cs;
   }
 
-  // Waits up to 2 s for the cursor to die. A bad resume token or expired
+  // Waits up to 4 s for the cursor to die. A bad resume token or expired
   // oplog position causes an error/close almost instantly (one server round-
-  // trip). If nothing goes wrong in that window the cursor is live.
+  // trip), but on M0 shared tiers the server can be slower. Also catches
+  // invalidating change events (dropDatabase, invalidate) that would kill
+  // the stream moments later — catching them here triggers the fallback
+  // chain instead of silently transitioning to "stopped".
   _probeCursor(cs) {
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      function cleanup() {
         cs.removeListener("error", onErr);
         cs.removeListener("close", onClose);
+        cs.removeListener("change", onChange);
+      }
+      const timeout = setTimeout(() => {
+        cleanup();
         resolve();
-      }, 2000);
+      }, 4000);
       function onErr(err) {
         clearTimeout(timeout);
-        cs.removeListener("close", onClose);
+        cleanup();
         reject(err);
       }
       function onClose() {
         clearTimeout(timeout);
-        cs.removeListener("error", onErr);
+        cleanup();
         reject(new Error("ChangeStream closed immediately — resume position may be invalid"));
+      }
+      function onChange(event) {
+        if (event.operationType === "invalidate" || event.operationType === "dropDatabase") {
+          clearTimeout(timeout);
+          cleanup();
+          reject(new Error(`Received ${event.operationType} event — stream will be invalidated`));
+        }
+        // Normal change events are fine — stream is healthy.
       }
       cs.once("error", onErr);
       cs.once("close", onClose);
+      cs.on("change", onChange);
     });
   }
 
