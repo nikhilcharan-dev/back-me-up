@@ -77,7 +77,7 @@
         <label for="targetTimestampLocal">Restore to</label>
         <input type="datetime-local" id="targetTimestampLocal" step="1" />
         <div class="hint">
-          <% var completedBackups = backups.filter(function(b){ return b.status === 'completed'; }); %>
+          <% var completedBackups = allBackups.filter(function(b){ return b.status === 'completed'; }); %>
           <% if (completedBackups.length) { %>
             Earliest available: <%= new Date(completedBackups[completedBackups.length-1].startedAt).toLocaleString() %>
           <% } else { %>
@@ -106,11 +106,12 @@
   </div>
 </div>
 
-<div class="card">
+<div class="card" id="backups">
   <div class="section-toolbar">
     <h2 style="margin:0">Backups<%- include('partials/info-icon', { text: 'Full snapshots taken on this database\'s schedule. Point-in-time restores start from the nearest one of these and replay captured changes forward from it.' }) %></h2>
+    <span class="help-text"><%= fmtNum(backupsTotal) %> total</span>
   </div>
-  <% if (backups.length === 0) { %>
+  <% if (backupsTotal === 0) { %>
     <div class="empty-state">No backups yet.</div>
   <% } else { %>
     <table>
@@ -130,6 +131,21 @@
         <% }) %>
       </tbody>
     </table>
+    <% if (backupsTotalPages > 1) { %>
+      <div class="pagination">
+        <% if (backupsPage > 1) { %>
+          <a class="btn secondary small" href="?backupsPage=<%= backupsPage - 1 %>#backups">&larr; Previous</a>
+        <% } else { %>
+          <span class="btn secondary small disabled">&larr; Previous</span>
+        <% } %>
+        <span class="help-text">Page <%= backupsPage %> of <%= backupsTotalPages %></span>
+        <% if (backupsPage < backupsTotalPages) { %>
+          <a class="btn secondary small" href="?backupsPage=<%= backupsPage + 1 %>#backups">Next &rarr;</a>
+        <% } else { %>
+          <span class="btn secondary small disabled">Next &rarr;</span>
+        <% } %>
+      </div>
+    <% } %>
   <% } %>
 </div>
 
@@ -155,47 +171,179 @@
 </div>
 
 <div class="grid cols-2">
-  <div class="card">
-    <h2>Retention<%- include('partials/info-icon', { text: 'Keeps the newest backup per hour/day/week bucket, going back this many buckets (grandfather-father-son). The single newest backup is always kept. Everything else is deleted when retention runs.' }) %></h2>
-    <p class="help-text">
+  <div class="card retention-card">
+    <div class="retention-header">
+      <div class="retention-header-title">
+        <div class="retention-icon-wrapper">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 8v13H3V8"></path>
+            <path d="M1 3h22v5H1z"></path>
+            <path d="M10 12h4"></path>
+          </svg>
+        </div>
+        <div>
+          <h2>
+            Retention Policy
+            <%- include('partials/info-icon', { text: 'Keeps the newest backup per hour/day/week bucket, going back this many buckets (grandfather-father-son). The single newest backup is always kept. Everything else is deleted when retention runs.' }) %>
+          </h2>
+          <span class="retention-subtitle">Grandfather-Father-Son rotation policy</span>
+        </div>
+      </div>
       <% if (db.retention) { %>
-        Hourly: <%= db.retention.hourly || 0 %> &middot; Daily: <%= db.retention.daily || 0 %> &middot; Weekly: <%= db.retention.weekly || 0 %>
+        <span class="badge ok retention-status-badge">
+          <span class="pulse-dot"></span> Active
+        </span>
       <% } else { %>
-        No policy set — backups are kept until manually deleted.
+        <span class="badge neutral retention-status-badge">No Policy</span>
       <% } %>
-    </p>
+    </div>
+
+    <!-- Bucket summary cards -->
+    <div class="retention-summary-grid">
+      <div class="retention-bucket-card">
+        <div class="bucket-header">
+          <span class="bucket-pill hourly">Hourly</span>
+          <span class="bucket-unit">bucket</span>
+        </div>
+        <div class="bucket-value"><%= (db.retention && db.retention.hourly) || 0 %></div>
+        <div class="bucket-label">Backups kept</div>
+      </div>
+
+      <div class="retention-bucket-card">
+        <div class="bucket-header">
+          <span class="bucket-pill daily">Daily</span>
+          <span class="bucket-unit">bucket</span>
+        </div>
+        <div class="bucket-value"><%= (db.retention && db.retention.daily) || 0 %></div>
+        <div class="bucket-label">Backups kept</div>
+      </div>
+
+      <div class="retention-bucket-card">
+        <div class="bucket-header">
+          <span class="bucket-pill weekly">Weekly</span>
+          <span class="bucket-unit">bucket</span>
+        </div>
+        <div class="bucket-value"><%= (db.retention && db.retention.weekly) || 0 %></div>
+        <div class="bucket-label">Backups kept</div>
+      </div>
+    </div>
+
     <% if (db.retention) { %>
-      <p class="help-text" data-retention-current-impact>
-        Running retention now would remove <strong><%= retentionPreview.prunedBases %></strong> of <%= retentionPreview.totalBases %> backup(s)
-        and <strong><%= retentionPreview.prunedSlices %></strong> change slice(s), keeping <%= retentionPreview.keptBases %>.
-      </p>
+      <div class="retention-impact-banner" data-retention-current-impact>
+        <div class="impact-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+          </svg>
+        </div>
+        <div class="impact-content">
+          <div class="impact-title">Current Impact Preview</div>
+          <div class="impact-details">
+            Running retention now would remove <strong><%= retentionPreview.prunedBases %></strong> of <%= retentionPreview.totalBases %> backup(s) and <strong><%= retentionPreview.prunedSlices %></strong> change slice(s), keeping <%= retentionPreview.keptBases %>.
+          </div>
+        </div>
+      </div>
     <% } %>
+
     <form
       method="post"
       action="/databases/<%= db._id %>/retention"
-      class="grid cols-2"
-      style="margin-bottom:10px"
+      class="retention-form"
       data-retention-form
       data-preview-url="/databases/<%= db._id %>/retention/preview"
     >
       <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-      <div class="form-row"><label>Hourly</label><input type="number" min="0" max="1000" step="1" name="hourly" value="<%= (db.retention && db.retention.hourly) || '' %>" placeholder="24" /></div>
-      <div class="form-row"><label>Daily</label><input type="number" min="0" max="1000" step="1" name="daily" value="<%= (db.retention && db.retention.daily) || '' %>" placeholder="30" /></div>
-      <div class="form-row" style="grid-column:1/-1"><label>Weekly</label><input type="number" min="0" max="1000" step="1" name="weekly" value="<%= (db.retention && db.retention.weekly) || '' %>" placeholder="12" /></div>
-      <div style="grid-column:1/-1; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
-        <button class="btn secondary small" type="submit">Save policy</button>
-        <button class="btn secondary small" type="button" data-retention-preview-btn>Preview impact</button>
+      
+      <div class="retention-inputs-grid">
+        <div class="retention-field-group">
+          <label for="retention-hourly">Hourly</label>
+          <div class="input-with-unit">
+            <input
+              id="retention-hourly"
+              type="number"
+              min="0"
+              max="1000"
+              step="1"
+              name="hourly"
+              value="<%= (db.retention && db.retention.hourly) || '' %>"
+              placeholder="24"
+            />
+            <span class="unit-tag">hrs</span>
+          </div>
+          <span class="field-hint">Hours to keep</span>
+        </div>
+
+        <div class="retention-field-group">
+          <label for="retention-daily">Daily</label>
+          <div class="input-with-unit">
+            <input
+              id="retention-daily"
+              type="number"
+              min="0"
+              max="1000"
+              step="1"
+              name="daily"
+              value="<%= (db.retention && db.retention.daily) || '' %>"
+              placeholder="30"
+            />
+            <span class="unit-tag">days</span>
+          </div>
+          <span class="field-hint">Days to keep</span>
+        </div>
+
+        <div class="retention-field-group">
+          <label for="retention-weekly">Weekly</label>
+          <div class="input-with-unit">
+            <input
+              id="retention-weekly"
+              type="number"
+              min="0"
+              max="1000"
+              step="1"
+              name="weekly"
+              value="<%= (db.retention && db.retention.weekly) || '' %>"
+              placeholder="12"
+            />
+            <span class="unit-tag">wks</span>
+          </div>
+          <span class="field-hint">Weeks to keep</span>
+        </div>
       </div>
-      <div style="grid-column:1/-1"><span class="help-text" data-retention-preview-result></span></div>
+
+      <div class="retention-actions-bar">
+        <button class="btn primary small" type="submit">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+          Save policy
+        </button>
+        <button class="btn secondary small" type="button" data-retention-preview-btn>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          Preview impact
+        </button>
+      </div>
+
+      <div class="retention-preview-container">
+        <span class="help-text retention-preview-result" data-retention-preview-result></span>
+      </div>
     </form>
-    <form
-      method="post"
-      action="/databases/<%= db._id %>/retention/run"
-      <% if (db.retention) { %>data-confirm="This will remove <%= retentionPreview.prunedBases %> backup(s) and <%= retentionPreview.prunedSlices %> change slice(s) right now. Continue?"<% } %>
-    >
-      <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
-      <button class="btn secondary small" type="submit">Run retention now</button>
-    </form>
+
+    <div class="retention-divider"></div>
+
+    <div class="retention-danger-zone">
+      <div class="danger-zone-info">
+        <span class="danger-title">On-demand Sweep</span>
+        <span class="danger-desc">Manually prune backups according to retention rule right now.</span>
+      </div>
+      <form
+        method="post"
+        action="/databases/<%= db._id %>/retention/run"
+        <% if (db.retention) { %>data-confirm="This will remove <%= retentionPreview.prunedBases %> backup(s) and <%= retentionPreview.prunedSlices %> change slice(s) right now. Continue?"<% } %>
+      >
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>" />
+        <button class="btn danger-outline small" type="submit">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+          Run retention now
+        </button>
+      </form>
+    </div>
   </div>
 
   <div class="card">

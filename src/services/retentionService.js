@@ -6,6 +6,7 @@ import { listChangeSlicesForDb, deleteChangeSlicesByIds } from "../repositories/
 import { deleteStorageKey } from "../lib/storageCleanup.js";
 import { findDatabaseById } from "../repositories/databasesRepo.js";
 import { insertAuditEntry } from "../repositories/auditRepo.js";
+import { validateRetention } from "./databaseService.js";
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -87,12 +88,20 @@ export async function previewPrune(dbId, retention) {
 export async function pruneDatabase(dbId) {
   const dbRecord = await findDatabaseById(dbId);
   if (!dbRecord) throw new Error(`No registered database with id ${dbId}`);
-  if (!dbRecord.retention) {
+
+  // Re-validate the stored policy rather than trusting it as-is: records saved
+  // before setRetentionPolicy() normalized all-zero input to null (a real bug —
+  // {hourly:0,daily:0,weekly:0} is truthy, so it passed this guard and pruned
+  // every backup but the single newest one, every time the cron ran) can still
+  // have that literal object sitting in the catalog. This makes them self-heal
+  // on the next prune instead of requiring everyone to notice and re-save.
+  const retention = validateRetention(dbRecord.retention);
+  if (!retention) {
     return { prunedBases: 0, prunedSlices: 0, message: "No retention policy set — nothing to prune" };
   }
 
   const backups = await listBaseBackupsForDb(dbId);
-  const keepSet = computeGfsKeepSet(backups, dbRecord.retention);
+  const keepSet = computeGfsKeepSet(backups, retention);
 
   const toDelete = backups.filter((b) => b.status === "completed" && !keepSet.has(String(b._id)));
   for (const b of toDelete) {

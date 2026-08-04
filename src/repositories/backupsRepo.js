@@ -28,6 +28,27 @@ export async function listBaseBackupsForDb(dbId) {
     .toArray();
 }
 
+// Paginated variant for the database page's Backups table, which otherwise
+// rendered every base backup ever taken for that database on one page. The
+// Restore card's "specific snapshot" dropdown still needs the full history
+// (any completed backup is a valid restore point, not just the current
+// page), so it calls listBaseBackupsForDb() above instead.
+export async function listBaseBackupsForDbPage(dbId, { page = 1, pageSize = 15 } = {}) {
+  const db = getCatalogDb();
+  const filter = { dbId: new ObjectId(dbId) };
+  const [items, total] = await Promise.all([
+    db
+      .collection(COLLECTION)
+      .find(filter)
+      .sort({ startedAt: -1 })
+      .skip((page - 1) * pageSize)
+      .limit(pageSize)
+      .toArray(),
+    db.collection(COLLECTION).countDocuments(filter),
+  ]);
+  return { items, total };
+}
+
 // The base a point-in-time restore replays on top of: the newest completed base
 // whose dump finished at or before the requested time.
 export async function findNewestCompletedBaseBefore(dbId, cutoffDate) {

@@ -25,7 +25,7 @@ import {
   unscheduleTestRestores,
 } from "../../scheduler/schedulerManager.js";
 import { SCHEDULE_PRESETS, WEEKDAYS, parseSchedule, describeCron, serverTimeZone } from "../schedulePresets.js";
-import { listBaseBackupsForDb } from "../../repositories/backupsRepo.js";
+import { listBaseBackupsForDb, listBaseBackupsForDbPage } from "../../repositories/backupsRepo.js";
 import { listRestoreJobsForDb } from "../../repositories/restoresRepo.js";
 import { listTestRestoreRunsForDb } from "../../repositories/testRestoresRepo.js";
 import { config } from "../../config/env.js";
@@ -48,22 +48,39 @@ function parseTags(raw) {
     .filter(Boolean);
 }
 
+const BACKUPS_PAGE_SIZE = 15;
+
+function normalizeBackupsPage(raw) {
+  const page = Number(raw);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
 async function loadDetail(request, reply, extra = {}) {
   const dbRecord = await getRegisteredDatabase(request.params.id);
   if (!dbRecord) return null;
   const db = toPublicDatabase(dbRecord);
-  const [backups, restoreJobs, testRestoreRuns, retentionPreview] = await Promise.all([
+  const backupsPage = normalizeBackupsPage(request.query.backupsPage);
+  const [allBackups, backupsPageResult, restoreJobs, testRestoreRuns, retentionPreview] = await Promise.all([
+    // Full history: the Restore card's "specific snapshot" dropdown and its
+    // "earliest available" hint need every completed backup, not just
+    // whichever page the Backups table happens to be showing.
     listBaseBackupsForDb(request.params.id),
+    listBaseBackupsForDbPage(request.params.id, { page: backupsPage, pageSize: BACKUPS_PAGE_SIZE }),
     listRestoreJobsForDb(request.params.id),
     listTestRestoreRunsForDb(request.params.id),
     previewPrune(request.params.id, db.retention),
   ]);
+  const backupsTotalPages = Math.max(1, Math.ceil(backupsPageResult.total / BACKUPS_PAGE_SIZE));
   return {
     ...(await baseViewContext(request, reply)),
     title: db.name,
     db,
     scheduleWords: describeCron(db.scheduleCron),
-    backups,
+    allBackups,
+    backups: backupsPageResult.items,
+    backupsTotal: backupsPageResult.total,
+    backupsPage: Math.min(backupsPage, backupsTotalPages),
+    backupsTotalPages,
     restoreJobs,
     testRestoreRuns,
     captureRunning: isCaptureRunning(request.params.id),
