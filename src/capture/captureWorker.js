@@ -84,7 +84,17 @@ export class CaptureWorker {
     }, FLUSH_INTERVAL_MS);
   }
 
+  // replayService.applyEvent() only understands insert/update/replace/delete —
+  // its default case already documents drop/rename/dropDatabase/invalidate as
+  // out of scope. That filtering was never actually done here, though: every
+  // admin/DDL event was normalized unconditionally, and invalidate (fired when
+  // the watched database itself is dropped — has no `ns` at all) crashed this
+  // handler outright, tearing down capture on what should've been a no-op.
+  static CAPTURED_OPS = new Set(["insert", "update", "replace", "delete"]);
+
   handleEvent(event) {
+    if (!CaptureWorker.CAPTURED_OPS.has(event.operationType)) return;
+
     const ct = toPlainClusterTime(event.clusterTime);
     const normalized = {
       ct,
