@@ -84,13 +84,13 @@ a:hover { text-decoration: underline; }
 .card h2 { font-size: 15px; margin: 0 0 14px; }
 .card h3 { font-size: 13px; margin: 0 0 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
-/* Hover/focus explainer next to a heading — native title tooltip, same &#9432;
-   glyph already used on the metrics table header. */
+/* Hover/focus explainer icon next to headings/labels — SVG circle with info i */
 .info-icon {
   display: inline-block; color: var(--text-muted); cursor: help;
-  font-size: 13px; margin-left: 5px; vertical-align: middle;
+  margin-left: 5px; vertical-align: middle; width: 14px; height: 14px;
+  flex-shrink: 0; transition: color 0.15s ease;
 }
-.info-icon:hover, .info-icon:focus { color: var(--primary); }
+.info-icon:hover, .info-icon:focus { color: var(--primary); outline: none; }
 
 .grid { display: grid; gap: 20px; }
 .grid.cols-2 { grid-template-columns: 1fr 1fr; }

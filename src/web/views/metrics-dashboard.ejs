@@ -50,7 +50,7 @@
         <tr>
           <th>Database</th>
           <th>Capture</th>
-          <th title="Time since the last change event was captured — climbs on an idle database even when capture is perfectly healthy. Continuity breaks (last column) is the signal that capture actually fell behind.">Capture lag &#9432;</th>
+          <th>Capture lag <%- include('partials/info-icon', { text: 'Time since the last change event was captured — climbs on an idle database even when capture is perfectly healthy. Continuity breaks (last column) is the signal that capture actually fell behind.' }) %></th>
           <th>Last backup age</th>
           <th>Backups</th>
           <th>Restores</th>
