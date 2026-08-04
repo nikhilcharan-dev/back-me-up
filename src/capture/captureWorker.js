@@ -1,4 +1,4 @@
-import { MongoClient, ObjectId } from "mongodb";
+import { MongoClient, ObjectId, Timestamp } from "mongodb";
 import { config } from "../config/env.js";
 import { decrypt } from "../lib/crypto.js";
 import { toPlainClusterTime } from "../lib/clusterTime.js";
@@ -22,6 +22,23 @@ function isContinuityBreak(err) {
       err?.message ?? ""
     )
   );
+}
+
+// A resume token whose `_data` hex-encodes a `dropDatabase` or `invalidate`
+// operationType is un-resumable on a database-scoped watch: the server
+// invalidated the cursor at that point, so resumeAfter just gives an
+// immediate close/error. Detect this by scanning the token's hex for the
+// known operationType strings that MongoDB encodes verbatim in the v1 token
+// format (documented in the change-stream spec).
+const INVALIDATING_OPS_IN_TOKEN = [
+  Buffer.from("dropDatabase").toString("hex"),
+  Buffer.from("invalidate").toString("hex"),
+];
+
+function isInvalidatingResumeToken(resumeTokenRef) {
+  if (!resumeTokenRef?._data) return false;
+  const hex = resumeTokenRef._data.toLowerCase();
+  return INVALIDATING_OPS_IN_TOKEN.some((pattern) => hex.includes(pattern));
 }
 
 // One worker per registered database. Owns a single db-scoped change stream
@@ -49,17 +66,80 @@ export class CaptureWorker {
     await this.client.connect();
     const sourceDb = this.client.db(dbRecord.dbName);
 
-    const watchOptions = { fullDocument: "updateLookup" };
-    if (dbRecord.resumeTokenRef) {
-      watchOptions.resumeAfter = dbRecord.resumeTokenRef;
+    // If the persisted resume token came from an invalidating event (e.g. the
+    // watched database was dropped), resumeAfter will fail immediately — the
+    // cursor was already dead at that oplog point. Instead of opening a fully
+    // fresh stream (which loses every event since capture died), try
+    // startAtOperationTime with the last captured cluster timestamp — this
+    // reads the oplog from that exact point, recovering the gap if the oplog
+    // still has it. Only falls back to a fully fresh stream if even that fails.
+    let useResumeToken = dbRecord.resumeTokenRef;
+    if (useResumeToken && isInvalidatingResumeToken(useResumeToken)) {
+      console.warn(
+        `[capture:${this.dbId}] resume token points to an invalidating event (dropDatabase/invalidate) — will try startAtOperationTime instead`
+      );
+      useResumeToken = null;
+      await updateDatabase(this.dbId, { resumeTokenRef: null, updatedAt: new Date() });
     }
 
+    this.changeStream = await this._openChangeStream(sourceDb, useResumeToken, dbRecord.lastCaptureTs);
+  }
+
+  // Opens the change stream, probing the cursor to fail-fast on bad tokens.
+  // Fallback chain:  resumeAfter → startAtOperationTime → fresh (no position).
+  // This ensures we recover gap events whenever the oplog still has them,
+  // instead of unconditionally discarding history.
+  async _openChangeStream(sourceDb, resumeToken, lastCaptureTs) {
+    const watchOptions = { fullDocument: "updateLookup" };
+    if (resumeToken) {
+      watchOptions.resumeAfter = resumeToken;
+    } else if (lastCaptureTs?.t) {
+      // No usable token, but we know the last captured cluster time. Use
+      // startAtOperationTime to resume from that exact oplog position — this
+      // replays every event since capture died, closing the gap with zero
+      // data loss (as long as the oplog hasn't rolled past this point).
+      watchOptions.startAtOperationTime = new Timestamp({ t: lastCaptureTs.t, i: lastCaptureTs.i ?? 0 });
+    }
+
+    let cs;
     try {
-      this.changeStream = sourceDb.watch([], watchOptions);
+      cs = sourceDb.watch([], watchOptions);
+      // Bad resume tokens / expired oplog positions surface as an "error" or
+      // "close" event almost immediately (within one server round-trip). We
+      // cannot use hasNext() because it blocks indefinitely on a tailable
+      // cursor when the DB is quiet. Instead, race a short timer against the
+      // first error/close event: if the cursor survives 2 s it's very likely
+      // good.
+      await this._probeCursor(cs);
     } catch (err) {
+      try { await cs?.close(); } catch { /* already dead */ }
+
+      // Fallback 1: if we used resumeAfter and it failed, try
+      // startAtOperationTime with the last captured cluster time.
+      if (resumeToken) {
+        console.warn(
+          `[capture:${this.dbId}] resume token failed (${err.message}) — falling back to startAtOperationTime`
+        );
+        await updateDatabase(this.dbId, { resumeTokenRef: null, updatedAt: new Date() });
+        return this._openChangeStream(sourceDb, null, lastCaptureTs);
+      }
+
+      // Fallback 2: if we used startAtOperationTime and it failed too (oplog
+      // rolled past that point), open a completely fresh stream from now.
+      if (lastCaptureTs?.t) {
+        console.warn(
+          `[capture:${this.dbId}] startAtOperationTime failed (${err.message}) — oplog may have rolled past last capture; opening fresh stream (gap in change history is unavoidable)`
+        );
+        return this._openChangeStream(sourceDb, null, null);
+      }
+
+      // No fallbacks left — genuine connection/permission issue.
       await this.handleError(err);
       throw err;
     }
+
+    // Cursor is live and validated — commit it.
+    this.changeStream = cs;
 
     // An open cursor guarantees no subsequent write is missed, even before the
     // first event is consumed (resumeToken is null until then) — this is what
@@ -91,6 +171,33 @@ export class CaptureWorker {
     this.flushTimer = setInterval(() => {
       this.flush().catch((err) => console.error(`[capture:${this.dbId}] flush error:`, err.message));
     }, FLUSH_INTERVAL_MS);
+
+    return cs;
+  }
+
+  // Waits up to 2 s for the cursor to die. A bad resume token or expired
+  // oplog position causes an error/close almost instantly (one server round-
+  // trip). If nothing goes wrong in that window the cursor is live.
+  _probeCursor(cs) {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cs.removeListener("error", onErr);
+        cs.removeListener("close", onClose);
+        resolve();
+      }, 2000);
+      function onErr(err) {
+        clearTimeout(timeout);
+        cs.removeListener("close", onClose);
+        reject(err);
+      }
+      function onClose() {
+        clearTimeout(timeout);
+        cs.removeListener("error", onErr);
+        reject(new Error("ChangeStream closed immediately — resume position may be invalid"));
+      }
+      cs.once("error", onErr);
+      cs.once("close", onClose);
+    });
   }
 
   // replayService.applyEvent() only understands insert/update/replace/delete —
