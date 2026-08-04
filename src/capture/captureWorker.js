@@ -74,9 +74,18 @@ export class CaptureWorker {
       this.handleError(err).catch((e) => console.error(`[capture:${this.dbId}] error handler failed:`, e.message));
     });
     this.changeStream.on("close", () => {
-      if (!this.stopped) {
-        updateDatabase(this.dbId, { captureStatus: "stopped", updatedAt: new Date() }).catch(() => {});
-      }
+      // A cursor can close on its own (idle connection reaped by the server,
+      // network drop) without ever emitting "error" first. This used to only
+      // update captureStatus and leave `this.stopped` false — so the worker
+      // stayed "running" in captureManager's map forever: isRunning() kept
+      // returning true, isCaptureRunning() agreed, and a later "Start capture"
+      // just handed back this same dead worker instead of opening a fresh
+      // stream. stopInternal() also clears the flush timer and closes the
+      // MongoClient, which this leaked before too.
+      if (this.stopped) return;
+      this.stopInternal()
+        .then(() => updateDatabase(this.dbId, { captureStatus: "stopped", updatedAt: new Date() }))
+        .catch((e) => console.error(`[capture:${this.dbId}] close cleanup failed:`, e.message));
     });
 
     this.flushTimer = setInterval(() => {
