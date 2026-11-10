@@ -79,6 +79,28 @@ Emit metrics and alert on:
 |---|---|---|
 | Capture lag rising | Worker slow / source throttled | Check worker health, source load; scale/queue |
 | `continuity_break` status | Worker was down > oplog window | Auto re-baseline should fire; verify new base; investigate downtime |
+| Capture `stopped`, error ends "Retrying automatically in …" | Stream error, source dropped/unreachable, or no connection at server boot | Nothing to do: capture restarts itself (see below). Fix the underlying cause (source, network, credentials) and the next attempt succeeds |
+| Capture `stopped`, no retry note | Stopped by a person (Stop button, PITR switched off) | Start it again from the database page |
 | Base backup failing | IP allowlist / auth / storage | Check allowlist, backup-user creds, bucket perms |
 | Restore replay error | Array-update edge case (PITR §5.5) | Re-run with post-image collection enabled; escalate |
 | Cannot restore to T | T older than retention | Recover to oldest available base; adjust retention |
+
+### Capture self-recovery
+
+A brief connection loss, a mongod restart or a failover does not stop capture: the
+MongoDB driver resumes the change stream from its last token on its own, and the
+worker leaves it alone (it only gives up if the driver cannot bring the stream back).
+
+When a capture does stop on its own — a non-resumable stream error, the watched
+database being dropped, the source staying unreachable past the driver's resume
+window, or no connection at server boot — `captureManager` restarts it with
+exponential gaps: `CAPTURE_RETRY_BASE_MS` (2 s) doubling each failed attempt up to
+`CAPTURE_RETRY_MAX_MS` (5 min), and starting over once a restarted capture has stayed
+up for `CAPTURE_RETRY_STABLE_MS` (60 s). It never gives up, each attempt re-reads the
+catalog (so a rotated URI is picked up), and every restart that succeeds is audited as
+`capture-auto-restart`. Restarts resume from the last stored position, so the gap is
+re-read from the oplog.
+
+It does not undo a manual stop, and it does not retry a failed re-baseline after a
+continuity break: that is a full dump, and capture must not resume over a known gap
+without it, so `continuity_break` still needs a person.
