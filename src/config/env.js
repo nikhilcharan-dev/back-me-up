@@ -13,6 +13,13 @@ export const config = {
   catalogMongoUri: required("CATALOG_MONGODB_URI"),
   masterKey: required("MASTER_KEY"),
   storageRoot: process.env.STORAGE_ROOT ?? "./data/storage",
+  // When a capture stops on its own (not because someone stopped it) it is restarted
+  // automatically. The wait before attempt N is base * 2^(N-1), capped at max, so a
+  // source that stays down is retried ever more gently instead of hammered. The
+  // ladder starts over once a restarted capture has stayed up for "stable".
+  captureRetryBaseMs: Number(process.env.CAPTURE_RETRY_BASE_MS ?? 2000),
+  captureRetryMaxMs: Number(process.env.CAPTURE_RETRY_MAX_MS ?? 300000),
+  captureRetryStableMs: Number(process.env.CAPTURE_RETRY_STABLE_MS ?? 60000),
   retentionSweepCron: process.env.RETENTION_SWEEP_CRON ?? "0 3 * * *",
   testRestoreDefaultCron: process.env.TEST_RESTORE_DEFAULT_CRON ?? "0 4 * * 0",
   metricsIntervalMs: Number(process.env.METRICS_INTERVAL_MS ?? 15000),

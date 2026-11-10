@@ -10,6 +10,11 @@ import { continuityBreakTotal } from "../metrics/registry.js";
 
 const FLUSH_INTERVAL_MS = 5000;
 const MAX_BATCH_SIZE = 500;
+// How long a "close" with no error and no invalidate may go without the driver
+// bringing the stream back before the worker gives up on it. A resume that cannot
+// reach the server fails by itself (emitting "error") after the driver's 30 s
+// server-selection timeout, so this only has to outlast that.
+const STREAM_RESUME_GRACE_MS = 45000;
 
 // Resume-token-expired errors vary by server version/driver; match broadly on the
 // documented codeName/message rather than a single numeric code. See
@@ -46,9 +51,23 @@ function isInvalidatingResumeToken(resumeTokenRef) {
 // slices on a timer or batch-size trigger, persisting the resume token after
 // every flush so a restart resumes with zero loss (within the oplog window).
 export class CaptureWorker {
-  constructor(dbId, { onContinuityBreak } = {}) {
+  // onDied(reason) is called once when a started worker stops on its own (stream
+  // error, stream ended), never for stop() and never for a failed start() (that
+  // one throws to its caller). captureManager restarts it from there.
+  constructor(dbId, { onContinuityBreak, onDied } = {}) {
     this.dbId = String(dbId);
     this.onContinuityBreak = onContinuityBreak;
+    this.onDied = onDied;
+    this.started = false;
+    this.explicitStop = false;
+    this.diedNotified = false;
+    // Why the worker stopped while it was still starting, so start() can throw it.
+    this.stopMessage = null;
+    // The stream being probed in _openChangeStream, which stopInternal() must be
+    // able to close even though it isn't this.changeStream yet.
+    this.openingStream = null;
+    this.closeWatch = null;
+    this.invalidated = false;
     this.buffer = [];
     this.client = null;
     this.changeStream = null;
@@ -64,6 +83,7 @@ export class CaptureWorker {
     const connectionUri = decrypt(dbRecord.connectionUriEnc, config.masterKey);
     this.client = new MongoClient(connectionUri);
     await this.client.connect();
+    this._throwIfStopped();
     const sourceDb = this.client.db(dbRecord.dbName);
 
     // If the persisted resume token came from an invalidating event (e.g. the
@@ -88,6 +108,15 @@ export class CaptureWorker {
     }
 
     this.changeStream = await this._openChangeStream(sourceDb, useResumeToken, useLastCaptureTs);
+    // The worker can be stopped (an explicit stop) or die in the gap between the
+    // stream going live and here. That's a failed start: the caller must hear
+    // about it rather than get a corpse.
+    this._throwIfStopped();
+    this.started = true;
+  }
+
+  _throwIfStopped() {
+    if (this.stopped) throw new Error(this.stopMessage ?? "Capture was stopped while it was starting");
   }
 
   // Opens the change stream, probing the cursor to fail-fast on bad tokens.
@@ -109,6 +138,12 @@ export class CaptureWorker {
     let cs;
     try {
       cs = sourceDb.watch([], watchOptions);
+      this.openingStream = cs;
+      // Attached before probing, not after: resuming replays every change made
+      // while capture was down, and those arrive within the probe window. A
+      // listener that only inspected them (as the probe's does) would consume
+      // and discard exactly the gap the resume exists to recover.
+      cs.on("change", (event) => this.handleEvent(event));
       // Bad resume tokens / expired oplog positions surface as an "error" or
       // "close" event almost immediately (within one server round-trip). We
       // cannot use hasNext() because it blocks indefinitely on a tailable
@@ -117,7 +152,17 @@ export class CaptureWorker {
       // good.
       await this._probeCursor(cs);
     } catch (err) {
+      this.openingStream = null;
       try { await cs?.close(); } catch { /* already dead */ }
+      // Whatever this failed cursor delivered is superseded: the next attempt
+      // re-reads from the same base position (or deliberately from "now").
+      this.buffer = [];
+
+      // The probe failed because the worker itself was stopped mid-start, which
+      // closed the client under the stream. That isn't a bad resume position, so
+      // none of the fallbacks below apply — they'd also reconnect a client nobody
+      // owns.
+      this._throwIfStopped();
 
       // Fallback 1: if we used resumeAfter and it failed, try
       // startAtOperationTime with the last captured cluster time.
@@ -144,7 +189,16 @@ export class CaptureWorker {
     }
 
     // Cursor is live and validated — commit it.
+    this.openingStream = null;
+    if (this.stopped) {
+      try { await cs.close(); } catch { /* already dead */ }
+      this._throwIfStopped();
+    }
     this.changeStream = cs;
+    // Before the await below, not after it: the probe has just detached its own
+    // "error" listener, and an "error" event nobody listens for is thrown as an
+    // uncaught exception, taking the whole process down.
+    this._attachLifecycleListeners(cs);
 
     // An open cursor guarantees no subsequent write is missed, even before the
     // first event is consumed (resumeToken is null until then) — this is what
@@ -153,28 +207,7 @@ export class CaptureWorker {
     // cleared whatever previously killed the stream, so a stale message shouldn't
     // keep showing on the database page.
     await updateDatabase(this.dbId, { captureStatus: "running", captureLastError: null, updatedAt: new Date() });
-
-    this.changeStream.on("change", (event) => this.handleEvent(event));
-    this.changeStream.on("error", (err) => {
-      this.handleError(err).catch((e) => console.error(`[capture:${this.dbId}] error handler failed:`, e.message));
-    });
-    this.changeStream.on("close", () => {
-      // A cursor can close on its own (idle connection reaped by the server,
-      // network drop, or an invalidate event from dropDatabase) without ever
-      // emitting "error" first. stopInternal() tears down the worker so
-      // captureManager doesn't hand back a dead worker on the next "Start".
-      if (this.stopped) return;
-      console.warn(`[capture:${this.dbId}] change stream closed unexpectedly (no error event)`);
-      this.stopInternal()
-        .then(() =>
-          updateDatabase(this.dbId, {
-            captureStatus: "stopped",
-            captureLastError: "Change stream closed unexpectedly (server may have reaped the cursor, or a dropDatabase/invalidate event was received)",
-            updatedAt: new Date(),
-          })
-        )
-        .catch((e) => console.error(`[capture:${this.dbId}] close cleanup failed:`, e.message));
-    });
+    if (this.stopped) return cs; // start() reports it; don't leave a flush timer behind
 
     this.flushTimer = setInterval(() => {
       this.flush().catch((err) => console.error(`[capture:${this.dbId}] flush error:`, err.message));
@@ -183,12 +216,100 @@ export class CaptureWorker {
     return cs;
   }
 
-  // Waits up to 4 s for the cursor to die. A bad resume token or expired
-  // oplog position causes an error/close almost instantly (one server round-
-  // trip), but on M0 shared tiers the server can be slower. Also catches
-  // invalidating change events (dropDatabase, invalidate) that would kill
-  // the stream moments later — catching them here triggers the fallback
-  // chain instead of silently transitioning to "stopped".
+  _attachLifecycleListeners(cs) {
+    cs.on("error", (err) => {
+      // Errors after we've stopped on purpose (e.g. the driver's "ChangeStream is
+      // closed" for events still in flight) must not overwrite the reason we
+      // stopped with a stack trace.
+      if (this.stopped) return;
+      this.handleError(err).catch((e) => console.error(`[capture:${this.dbId}] error handler failed:`, e.message));
+    });
+    cs.on("close", () => this._onStreamClose(cs));
+  }
+
+  // "close" does NOT mean the stream died. On a resumable error (dropped
+  // connection, mongod restart, failover, cursor not found) the driver closes the
+  // failed cursor, which emits "close" on the ChangeStream, and then re-opens it
+  // from the last token on its own. Verified against a live server: the event
+  // arrives within ~100 ms of the drop, ChangeStream.closed is true at that moment,
+  // and the stream then goes on delivering with no "error" ever emitted. Tearing
+  // the worker down on "close" — which this used to do — killed a healthy,
+  // self-healing capture mid-stream and marked it stopped.
+  //
+  // A stream that is really over announces it differently: "error" when the driver
+  // gives up (non-resumable error, or the resume could not reach the server), or an
+  // "invalidate" event when the watched database is dropped. So on "close" we only
+  // watch: if the driver brings the stream back (closed flips to false) all is
+  // well; if it doesn't within the grace period, the stream is dead.
+  _onStreamClose(cs) {
+    if (this.stopped || this.closeWatch) return;
+    if (this.invalidated) {
+      this._streamEnded("The watched database was dropped or invalidated, which ends its change stream");
+      return;
+    }
+    console.warn(`[capture:${this.dbId}] change stream closed — waiting for the driver to resume it`);
+    const deadline = Date.now() + STREAM_RESUME_GRACE_MS;
+    this.closeWatch = setInterval(() => {
+      if (this.stopped || this.changeStream !== cs) {
+        this._clearCloseWatch();
+      } else if (this.invalidated) {
+        this._clearCloseWatch();
+        this._streamEnded("The watched database was dropped or invalidated, which ends its change stream");
+      } else if (!cs.closed) {
+        this._clearCloseWatch();
+        console.log(`[capture:${this.dbId}] change stream resumed by the driver`);
+      } else if (Date.now() >= deadline) {
+        this._clearCloseWatch();
+        this._streamEnded(
+          `The change stream closed and was not resumed within ${STREAM_RESUME_GRACE_MS / 1000}s (the server may have reaped the cursor)`
+        );
+      }
+    }, 250);
+  }
+
+  _clearCloseWatch() {
+    if (this.closeWatch) clearInterval(this.closeWatch);
+    this.closeWatch = null;
+  }
+
+  // The stream is over without an "error" to say why (see _onStreamClose).
+  async _streamEnded(message) {
+    if (this.stopped) return;
+    console.warn(`[capture:${this.dbId}] ${message}`);
+    try {
+      await this.stopInternal();
+      await updateDatabase(this.dbId, { captureStatus: "stopped", captureLastError: message, updatedAt: new Date() });
+      await insertAuditEntry({ actor: "system", action: "capture-error", dbId: this.dbId, detail: { error: "stream-ended", message } });
+    } catch (e) {
+      console.error(`[capture:${this.dbId}] close cleanup failed:`, e.message);
+    }
+    this._notifyDied(message);
+  }
+
+  // Tells captureManager the worker stopped on its own so it can restart it. Not
+  // for stop(), and not for a failed start() — that one throws to whoever started
+  // it, who decides whether to retry.
+  _notifyDied(reason) {
+    if (this.explicitStop || this.diedNotified) return;
+    if (!this.started) {
+      this.stopMessage = this.stopMessage ?? reason;
+      return;
+    }
+    this.diedNotified = true;
+    try {
+      this.onDied?.(reason);
+    } catch (e) {
+      console.error(`[capture:${this.dbId}] onDied handler failed:`, e.message);
+    }
+  }
+
+  // Observes the cursor for up to 4 s; it never consumes events (the permanent
+  // listener in _openChangeStream handles those). Waits up to 4 s for the cursor
+  // to die. A bad resume token or expired oplog position causes an error/close
+  // almost instantly (one server round-trip), but on M0 shared tiers the server
+  // can be slower. Also catches invalidating change events (dropDatabase,
+  // invalidate) that would kill the stream moments later — catching them here
+  // triggers the fallback chain instead of silently transitioning to "stopped".
   _probeCursor(cs) {
     return new Promise((resolve, reject) => {
       function cleanup() {
@@ -233,6 +354,11 @@ export class CaptureWorker {
   static CAPTURED_OPS = new Set(["insert", "update", "replace", "delete"]);
 
   handleEvent(event) {
+    // A stream the worker already gave up on can still deliver what was in flight.
+    if (this.stopped) return;
+    // Nothing to capture, but it is what tells us the "close" that follows is the
+    // real end of the stream and not the driver resuming (see _onStreamClose).
+    if (event.operationType === "invalidate") this.invalidated = true;
     if (!CaptureWorker.CAPTURED_OPS.has(event.operationType)) return;
 
     const ct = toPlainClusterTime(event.clusterTime);
@@ -318,21 +444,26 @@ export class CaptureWorker {
         await this.onContinuityBreak(this.dbId);
       }
     } else {
-      await updateDatabase(this.dbId, { captureStatus: "stopped", captureLastError: errorDetail, updatedAt: new Date() });
-      // Unlike the continuity-break path (whose onContinuityBreak callback always
-      // audits its own outcome), a plain stream error had no audit trail at all
-      // before this — it just went silent in captureStatus with nothing to show
-      // for it short of server console logs.
-      await insertAuditEntry({
-        actor: "system",
-        action: "capture-error",
-        dbId: this.dbId,
-        detail: { error: err.message, code: err.code ?? null, codeName: err.codeName ?? null },
-      }).catch(() => {});
+      try {
+        await updateDatabase(this.dbId, { captureStatus: "stopped", captureLastError: errorDetail, updatedAt: new Date() });
+        // Unlike the continuity-break path (whose onContinuityBreak callback always
+        // audits its own outcome), a plain stream error had no audit trail at all
+        // before this — it just went silent in captureStatus with nothing to show
+        // for it short of server console logs.
+        await insertAuditEntry({
+          actor: "system",
+          action: "capture-error",
+          dbId: this.dbId,
+          detail: { error: err.message, code: err.code ?? null, codeName: err.codeName ?? null },
+        }).catch(() => {});
+      } finally {
+        this._notifyDied(errorDetail);
+      }
     }
   }
 
   async stop() {
+    this.explicitStop = true;
     this.stopped = true;
     await this.stopInternal();
     await updateDatabase(this.dbId, { captureStatus: "stopped", updatedAt: new Date() });
@@ -350,11 +481,19 @@ export class CaptureWorker {
     this.stopped = true;
     if (this.flushTimer) clearInterval(this.flushTimer);
     this.flushTimer = null;
+    this._clearCloseWatch();
 
     try {
       await this.flush();
     } catch (err) {
       console.error(`[capture:${this.dbId}] final flush error:`, err.message);
+    }
+
+    // A stream still being probed by start() isn't this.changeStream yet.
+    if (this.openingStream) {
+      const opening = this.openingStream;
+      this.openingStream = null;
+      try { await opening.close(); } catch { /* already closed */ }
     }
 
     if (this.changeStream) {
